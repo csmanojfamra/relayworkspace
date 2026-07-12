@@ -57,7 +57,7 @@ export function TypingEvent({ line }: { line: string }) {
       <AsciiRule />
       <div className="flex items-center gap-2 py-2 text-[12px] text-[var(--text-muted)]">
         <span className="text-[var(--accent)]">&gt;</span>
-        <span>Remote endpoint is preparing a response...</span>
+        <span>Remote endpoint is writing to the session...</span>
       </div>
       <div className="flex items-center gap-2 pb-2 pl-4 text-[12px] text-[var(--accent)]">
         <span className="opacity-70">{line}</span>

@@ -6,6 +6,7 @@ import { useTerminalTimeline } from '@/hooks/useTerminalTimeline';
 import { useCountdown } from '@/hooks/useCountdown';
 import { useIsMobile } from '@/hooks/useMediaQuery';
 import { AsciiRule, SystemEventLine, TypingEvent } from '@/components/SystemEventLine';
+import { CommandInput } from '@/components/CommandInput';
 
 interface MessageStreamProps {
   messages: ChatMessage[];
@@ -14,6 +15,9 @@ interface MessageStreamProps {
   peerConnected: boolean;
   connected: boolean;
   onVisible?: (ids: string[]) => void;
+  onSend: (value: string) => void;
+  onTyping: (typing: boolean) => void;
+  inputDisabled?: boolean;
 }
 
 type StreamItem =
@@ -27,8 +31,12 @@ export function MessageStream({
   peerConnected,
   connected,
   onVisible,
+  onSend,
+  onTyping,
+  inputDisabled,
 }: MessageStreamProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
   const { events, typingLine, ambient } = useTerminalTimeline({
     peerConnected,
@@ -56,25 +64,21 @@ export function MessageStream({
     if (pending.length) onVisible(pending);
   }, [messages, role, onVisible]);
 
-  const empty = items.length === 0 && !typingLine && !ambient;
-
   return (
-    <div className="scroll-y terminal-scroll h-full px-4 py-4 sm:px-6 sm:py-6">
-      <div className="mx-auto flex min-h-full max-w-3xl flex-col justify-end">
-        {empty && (
-          <div className="mb-auto flex flex-1 flex-col items-center justify-center gap-3 py-20">
-            <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-[var(--text-faint)]">
-              Secure Workspace
-            </p>
-            <p className="max-w-xs text-center text-xs leading-relaxed text-[var(--text-muted)]">
-              {peerConnected
-                ? 'Secure tunnel ready. Transmissions will appear here.'
-                : 'Waiting for remote endpoint to connect.'}
-            </p>
-            <span className="blink mt-2 inline-block h-4 w-[7px] bg-[var(--cursor)] opacity-70" />
-          </div>
-        )}
-
+    <div
+      ref={scrollRef}
+      className="scroll-y terminal-scroll h-full px-4 py-4 sm:px-6 sm:py-6"
+      onMouseDown={(e) => {
+        const target = e.target as HTMLElement;
+        if (target.closest('textarea, button, a, input')) return;
+        const prompt = scrollRef.current?.querySelector('textarea');
+        if (prompt instanceof HTMLTextAreaElement && !prompt.disabled) {
+          // Defer so we don't steal selection from interactive children.
+          requestAnimationFrame(() => prompt.focus());
+        }
+      }}
+    >
+      <div className="mx-auto flex min-h-full max-w-3xl flex-col justify-end pb-[max(12px,var(--safe-bottom))]">
         <div className="space-y-1">
           <AnimatePresence initial={false}>
             {items.map((item) => {
@@ -83,7 +87,7 @@ export function MessageStream({
               }
 
               return (
-                <EphemeralMessage
+                <TerminalEntry
                   key={item.key}
                   message={item.message}
                   grouped={item.grouped}
@@ -103,15 +107,29 @@ export function MessageStream({
               <SystemEventLine key={ambient.id} event={ambient} compact />
             )}
           </AnimatePresence>
+
+          {/* Live prompt — always the last line of the terminal. */}
+          <div className="pt-3">
+            {items.length === 0 && !typingLine && !ambient && (
+              <p className="mb-3 font-mono text-[10px] tracking-wide text-[var(--text-faint)]">
+                {peerConnected ? 'Awaiting input.' : 'Waiting for remote endpoint.'}
+              </p>
+            )}
+            <CommandInput
+              onSend={onSend}
+              onTyping={onTyping}
+              disabled={inputDisabled}
+            />
+          </div>
         </div>
 
-        <div ref={bottomRef} className="h-5" />
+        <div ref={bottomRef} className="h-3" />
       </div>
     </div>
   );
 }
 
-function EphemeralMessage({
+function TerminalEntry({
   message,
   grouped,
   mine,
@@ -142,15 +160,15 @@ function EphemeralMessage({
       const remoteSeen =
         message.senderRole === 'host' ? message.seenByGuest : message.seenByHost;
       if (remoteSeen) return '✓ Acknowledged';
-      return message.delivered ? 'Transmitted' : 'Queued';
+      return message.delivered ? 'Written' : 'Pending';
     }
-    return message.delivered ? 'Transmitted' : 'Queued';
+    return message.delivered ? 'Written' : 'Pending';
   })();
 
   return (
     <motion.article
       layout
-      initial={{ opacity: 0, y: 12 }}
+      initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{
         opacity: 0,
@@ -161,7 +179,7 @@ function EphemeralMessage({
         overflow: 'hidden',
         transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] },
       }}
-      transition={{ duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
+      transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
       className="group font-mono"
       style={{ paddingTop: grouped ? 4 : 12 }}
       onMouseEnter={() => {
@@ -184,24 +202,29 @@ function EphemeralMessage({
         if (isMobile && showMeta) setShowMeta(false);
       }}
     >
-      {!grouped && <AsciiRule />}
-      <div className={`flex items-baseline justify-between gap-3 ${grouped ? '' : 'pt-2.5'}`}>
-        {!grouped ? (
+      {!grouped && (
+        <>
+          <AsciiRule />
           <p
-            className="text-[12px] font-medium tracking-tight"
+            className="pt-2.5 text-[12px] font-medium tracking-tight"
             style={{ color: mine ? 'var(--me)' : 'var(--peer)' }}
           >
             {promptLabel(mine ? 'me' : 'friend')}
           </p>
-        ) : (
-          <span className="select-none text-[12px] text-transparent">·</span>
-        )}
-        <p className="shrink-0 text-[10px] tabular-nums text-[var(--text-faint)]">
-          {formatTime(message.timestamp)}
+        </>
+      )}
+
+      <div className={`flex items-start gap-2 ${grouped ? '' : 'mt-1.5'}`}>
+        <span className="shrink-0 select-none text-[13px] leading-7 text-[var(--accent)] sm:text-sm">
+          &gt;
+        </span>
+        <p className="min-w-0 flex-1 whitespace-pre-wrap break-words text-[13px] leading-7 text-[var(--text)] sm:text-sm">
+          {message.content}
         </p>
       </div>
-      <p className="mt-1.5 whitespace-pre-wrap break-words text-[13px] leading-7 text-[var(--text)] sm:text-sm">
-        {message.content}
+
+      <p className="mt-1 pl-5 text-[10px] tabular-nums text-[var(--text-faint)] opacity-70">
+        {formatTime(message.timestamp)}
       </p>
 
       <AnimatePresence>
@@ -211,7 +234,7 @@ function EphemeralMessage({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
-            className="mt-1.5 text-[10px] tracking-wide text-[var(--text-faint)]"
+            className="mt-1 pl-5 text-[10px] tracking-wide text-[var(--text-faint)]"
           >
             {statusLabel}
           </motion.p>

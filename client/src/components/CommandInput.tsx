@@ -5,7 +5,7 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from 'react';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 
 interface CommandInputProps {
   onSend: (value: string) => void;
@@ -13,23 +13,27 @@ interface CommandInputProps {
   disabled?: boolean;
 }
 
+/**
+ * Inline terminal prompt — last line of the session stream.
+ * Not a chat composer: no card, border, placeholder, or send control.
+ */
 export function CommandInput({ onSend, onTyping, disabled }: CommandInputProps) {
   const [value, setValue] = useState('');
-  const [focused, setFocused] = useState(false);
+  const [promptKey, setPromptKey] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const typingRef = useRef(false);
   const stopTimer = useRef<number | null>(null);
 
   useEffect(() => {
-    const id = window.setTimeout(() => textareaRef.current?.focus(), 120);
+    const id = window.setTimeout(() => textareaRef.current?.focus(), 80);
     return () => window.clearTimeout(id);
-  }, [disabled]);
+  }, [disabled, promptKey]);
 
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = '0px';
-    el.style.height = `${Math.min(el.scrollHeight, 148)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   }, [value]);
 
   const emitTyping = (next: boolean) => {
@@ -55,7 +59,7 @@ export function CommandInput({ onSend, onTyping, disabled }: CommandInputProps) 
     onSend(trimmed);
     setValue('');
     emitTyping(false);
-    requestAnimationFrame(() => textareaRef.current?.focus());
+    setPromptKey((k) => k + 1);
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -71,48 +75,61 @@ export function CommandInput({ onSend, onTyping, disabled }: CommandInputProps) 
   };
 
   return (
-    <form
-      onSubmit={onSubmit}
-      className="command-bar shrink-0 border-t border-[var(--border)] bg-[color-mix(in_srgb,var(--bg-elevated)_94%,transparent)] px-3 pb-[max(10px,var(--safe-bottom))] pt-2.5 backdrop-blur-2xl"
-    >
-      <motion.div
-        animate={{
-          borderColor: focused
-            ? 'color-mix(in srgb, var(--accent) 35%, var(--border))'
-            : 'var(--border)',
-          boxShadow: focused
-            ? '0 0 0 1px color-mix(in srgb, var(--accent) 12%, transparent), inset 0 1px 0 rgba(255,255,255,0.03)'
-            : 'inset 0 1px 0 rgba(255,255,255,0.03)',
-        }}
-        transition={{ duration: 0.2 }}
-        className={`mx-auto flex max-w-3xl items-end gap-2 rounded-2xl border bg-[var(--bg)] px-3 py-3 ${
-          disabled ? 'opacity-55' : ''
-        }`}
+    <AnimatePresence mode="wait">
+      <motion.form
+        key={promptKey}
+        onSubmit={onSubmit}
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: disabled ? 0.45 : 1, y: 0 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+        className="terminal-prompt font-mono"
+        onClick={() => textareaRef.current?.focus()}
       >
-        <span className="mb-1 select-none text-[var(--accent)]">&gt;</span>
-        <textarea
-          ref={textareaRef}
-          value={value}
-          disabled={disabled}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          onChange={(e) => handleChange(e.target.value)}
-          onKeyDown={onKeyDown}
-          rows={1}
-          placeholder={disabled ? 'Remote endpoint unavailable' : 'Enter transmission'}
-          className="max-h-[148px] min-h-[24px] w-full resize-none bg-transparent text-[13px] leading-6 text-[var(--text)] outline-none placeholder:text-[var(--text-faint)] sm:text-sm"
-          aria-label="Workspace command input"
-        />
-        <span
-          className={`blink mb-1 inline-block h-5 w-[8px] shrink-0 bg-[var(--cursor)] transition-opacity ${
-            value || disabled ? 'opacity-0' : 'opacity-100'
-          }`}
-          aria-hidden
-        />
-      </motion.div>
-      <p className="mx-auto mt-1.5 max-w-3xl px-1 text-[10px] tracking-wide text-[var(--text-faint)]">
-        Enter to transmit · Shift+Enter for newline
-      </p>
-    </form>
+        <p
+          className="select-none text-[12px] font-medium tracking-tight"
+          style={{ color: 'var(--me)' }}
+        >
+          local@relay:~$
+        </p>
+
+        <div className="mt-1.5 flex items-start gap-2">
+          <span className="select-none text-[13px] leading-7 text-[var(--accent)] sm:text-sm">
+            &gt;
+          </span>
+          <div className="relative min-w-0 flex-1">
+            <textarea
+              ref={textareaRef}
+              value={value}
+              disabled={disabled}
+              onChange={(e) => handleChange(e.target.value)}
+              onKeyDown={onKeyDown}
+              rows={1}
+              spellCheck={false}
+              autoCapitalize="off"
+              autoCorrect="off"
+              autoComplete="off"
+              aria-label="Terminal prompt"
+              className="max-h-[160px] min-h-[28px] w-full resize-none overflow-y-auto bg-transparent p-0 text-[13px] leading-7 text-[var(--text)] outline-none sm:text-sm"
+              style={{
+                caretColor: value || disabled ? 'var(--cursor)' : 'transparent',
+              }}
+            />
+            {!value && !disabled && (
+              <span
+                className="blink pointer-events-none absolute left-0 top-[5px] inline-block h-[16px] w-[8px] bg-[var(--cursor)]"
+                aria-hidden
+              />
+            )}
+          </div>
+        </div>
+
+        {disabled && (
+          <p className="mt-2 text-[10px] tracking-wide text-[var(--text-faint)]">
+            Remote endpoint offline — prompt locked
+          </p>
+        )}
+      </motion.form>
+    </AnimatePresence>
   );
 }

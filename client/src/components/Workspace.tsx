@@ -4,7 +4,6 @@ import { Header } from '@/components/Header';
 import { Sidebar } from '@/components/Sidebar';
 import { ResizableSidebar } from '@/components/ResizableSidebar';
 import { MessageStream } from '@/components/MessageStream';
-import { CommandInput } from '@/components/CommandInput';
 import { InvitePanel } from '@/components/InvitePanel';
 import { StatusBanner } from '@/components/StatusBanner';
 import { useSession } from '@/hooks/useSession';
@@ -61,15 +60,12 @@ export function Workspace() {
                 peerConnected={peerConnected}
                 connected={connected}
                 onVisible={onVisible}
+                onSend={sendMessage}
+                onTyping={setTyping}
+                inputDisabled={!peerConnected}
               />
             )}
           </main>
-
-          <CommandInput
-            onSend={sendMessage}
-            onTyping={setTyping}
-            disabled={!peerConnected}
-          />
         </div>
       </div>
     </motion.div>

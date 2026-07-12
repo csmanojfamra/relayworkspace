@@ -175,19 +175,18 @@ a {
   padding-left: var(--safe-left);
 }
 
-.status-bar,
-.command-bar {
+.status-bar {
   transition:
     background-color 280ms ease,
     border-color 280ms ease,
     transform 180ms ease;
 }
 
-@media (max-width: 899px) {
-  .command-bar {
-    padding-bottom: max(10px, var(--safe-bottom));
-  }
+.terminal-prompt textarea {
+  field-sizing: content;
+}
 
+@media (max-width: 899px) {
   .terminal-scroll {
     scroll-padding-bottom: 24px;
   }
