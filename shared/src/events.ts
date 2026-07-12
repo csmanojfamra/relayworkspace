@@ -1,0 +1,25 @@
+export const SocketEvents = {
+  CREATE_ROOM: 'create-room',
+  JOIN_ROOM: 'join-room',
+  JOIN_REQUEST: 'join-request',
+  ACCEPT_REQUEST: 'accept-request',
+  REJECT_REQUEST: 'reject-request',
+  SEND_MESSAGE: 'send-message',
+  RECEIVE_MESSAGE: 'receive-message',
+  MESSAGE_UPDATED: 'message-updated',
+  MESSAGE_DELETED: 'message-deleted',
+  TYPING_START: 'typing-start',
+  TYPING_STOP: 'typing-stop',
+  SEEN: 'seen',
+  HEARTBEAT: 'heartbeat',
+  DISCONNECT: 'disconnect',
+  ROOM_STATE: 'room-state',
+  PEER_STATUS: 'peer-status',
+  ERROR: 'error',
+  REQUEST_REJECTED: 'request-rejected',
+  ROOM_LOCKED: 'room-locked',
+  LATENCY: 'latency',
+  REJOIN: 'rejoin',
+} as const;
+
+export type SocketEventName = (typeof SocketEvents)[keyof typeof SocketEvents];
