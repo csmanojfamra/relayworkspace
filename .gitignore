@@ -1,6 +1,7 @@
 node_modules
 dist
 build
+server/public
 .env
 .env.local
 .env.*.local
@@ -11,3 +12,4 @@ coverage
 *.tsbuildinfo
 .railway
 .netlify
+.vercel
