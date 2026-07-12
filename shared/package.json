@@ -16,7 +16,7 @@
     "typecheck": "tsc --noEmit",
     "dev": "tsc --watch --preserveWatchOutput"
   },
-  "devDependencies": {
+  "dependencies": {
     "typescript": "^5.8.2"
   }
 }

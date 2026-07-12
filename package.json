@@ -12,6 +12,7 @@
     "postinstall": "npm run build -w shared",
     "dev": "npm run build -w shared && concurrently -n server,client -c cyan,magenta \"npm run dev -w server\" \"npm run dev -w client\"",
     "build": "npm run build -w shared && npm run build -w server && npm run build -w client",
+    "build:web": "npm run build -w shared && npm run build -w client",
     "start": "npm run start -w server",
     "typecheck": "npm run typecheck -w shared && npm run typecheck -w server && npm run typecheck -w client",
     "icons": "node scripts/generate-icons.mjs"
