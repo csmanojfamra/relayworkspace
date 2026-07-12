@@ -331,7 +331,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     socket.emit(SocketEvents.CREATE_ROOM, (result: CreateRoomResult) => {
       setRole(result.role);
       setRoomId(result.roomId);
-      setInviteUrl(result.inviteUrl);
+      // Always build the invite against the browser origin so production
+      // never ships localhost links if CLIENT_ORIGIN is misconfigured.
+      const origin = window.location.origin.replace(/\/$/, '');
+      setInviteUrl(`${origin}/join/${result.roomId}?token=${result.inviteToken}`);
       setInviteToken(result.inviteToken);
       setSessionStartedAt(Date.now());
       setMessages([]);
