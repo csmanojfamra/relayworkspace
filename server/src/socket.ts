@@ -62,11 +62,11 @@ export function registerSocketHandlers(io: Server): void {
       ) => {
         const rejoined = roomStore.rejoin(payload.roomId, payload.sessionKey, socket.id);
         if (!rejoined) {
+          // Stale browser session after restart / room purge — ack only, no hard error.
           const error: ErrorPayload = {
             code: 'ROOM_NOT_FOUND',
             message: 'Unable to restore workspace.',
           };
-          emitError(socket, error);
           ack?.(error);
           return;
         }

@@ -151,13 +151,30 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const activeRoom = roomIdRef.current ?? persisted?.roomId;
       const activeKey = sessionKeyRef.current ?? persisted?.sessionKey;
       if (!activeRoom || !activeKey) return;
+      // Only restore when we already have an active workspace phase, or a
+      // persisted session from this browser tab. Never surface a hard error
+      // if the ephemeral room is already gone.
       if (!['host-ready', 'chat', 'booting'].includes(phaseRef.current) && !persisted) return;
 
       socket.emit(
         SocketEvents.REJOIN,
         { roomId: activeRoom, sessionKey: activeKey },
         (result: JoinResult | ErrorPayload) => {
-          if ('code' in result) return;
+          if ('code' in result) {
+            // Stale session after server restart / both endpoints left.
+            sessionKeyRef.current = null;
+            roomIdRef.current = null;
+            savePersistedSession(null);
+            if (phaseRef.current === 'landing' || phaseRef.current === 'error') {
+              setError(null);
+              setPhase('landing');
+              setRole(null);
+              setRoomId(null);
+              setMessages([]);
+              setBootCompleteState(false);
+            }
+            return;
+          }
           setRole(result.role);
           setRoomId(result.roomId);
           setMessages(result.messages);
@@ -230,6 +247,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     });
 
     socket.on(SocketEvents.ERROR, (payload: ErrorPayload) => {
+      // Ignore stale restore noise — handled in rejoin ack.
+      if (
+        payload.code === 'ROOM_NOT_FOUND' &&
+        (phaseRef.current === 'landing' || phaseRef.current === 'error')
+      ) {
+        sessionKeyRef.current = null;
+        savePersistedSession(null);
+        setError(null);
+        setPhase('landing');
+        return;
+      }
+
       setError(payload);
       if (
         payload.code === 'INVALID_INVITE' ||
