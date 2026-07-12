@@ -96,6 +96,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const pingSentRef = useRef<number>(0);
   const sessionKeyRef = useRef<string | null>(null);
   const roomIdRef = useRef<string | null>(null);
+  const inviteTokenRef = useRef<string | null>(null);
   const phaseRef = useRef<SessionPhase>('landing');
 
   const [phase, setPhase] = useState<SessionPhase>('landing');
@@ -124,6 +125,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     roomIdRef.current = roomId;
   }, [roomId]);
+
+  useEffect(() => {
+    inviteTokenRef.current = inviteToken;
+  }, [inviteToken]);
 
   const ensureSocket = useCallback(() => {
     if (socketRef.current) return socketRef.current;
@@ -196,11 +201,38 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       );
     };
 
+    const resumePendingJoin = () => {
+      const phase = phaseRef.current;
+      if (phase !== 'waiting-approval' && phase !== 'joining') return;
+      const activeRoom = roomIdRef.current;
+      const token = inviteTokenRef.current;
+      if (!activeRoom || !token) return;
+
+      socket.emit(
+        SocketEvents.JOIN_ROOM,
+        { roomId: activeRoom, token },
+        (result: { status: 'pending' } | JoinResult | ErrorPayload) => {
+          if ('code' in result) {
+            // Room gone after server restart — surface it.
+            if (result.code === 'ROOM_NOT_FOUND' || result.code === 'EXPIRED_INVITE') {
+              setError(result);
+              setPhase('error');
+            }
+            return;
+          }
+          if ('status' in result && result.status === 'pending') {
+            setPhase('waiting-approval');
+          }
+        }
+      );
+    };
+
     socket.on('connect', () => {
       setConnected(true);
       setConnectionStatus('connected');
       setError((prev) => (prev?.code === 'SERVER_ERROR' ? null : prev));
       attemptRejoin();
+      resumePendingJoin();
     });
 
     socket.on('disconnect', () => {
@@ -215,9 +247,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     socket.on(SocketEvents.ROOM_STATE, (state: RoomPublicState) => {
       setRoomState(state);
       setPeerConnected(state.peerConnected);
-      if (state.pendingRequest) {
-        setJoinRequest(state.pendingRequest);
-      }
+      // Always sync — clears stale authorize cards when guest disconnects pre-accept.
+      setJoinRequest(state.pendingRequest);
     });
 
     socket.on(SocketEvents.JOIN_REQUEST, (request: JoinRequestPayload) => {
@@ -252,6 +283,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     });
 
     socket.on(SocketEvents.ERROR, (payload: ErrorPayload) => {
+      // Stale authorize attempt — guest left before accept.
+      if (payload.code === 'GUEST_LEFT') {
+        setJoinRequest(null);
+        return;
+      }
+
       // Ignore stale restore noise — handled in rejoin ack.
       if (
         payload.code === 'ROOM_NOT_FOUND' &&
@@ -261,6 +298,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         savePersistedSession(null);
         setError(null);
         setPhase('landing');
+        return;
+      }
+
+      // While waiting for host auth, keep the guest on the waiting screen for
+      // transient full/pending conflicts — they can tap Request Access.
+      if (
+        (phaseRef.current === 'waiting-approval' || phaseRef.current === 'joining') &&
+        (payload.code === 'ROOM_FULL' || payload.code === 'HOST_LEFT')
+      ) {
         return;
       }
 
@@ -372,6 +418,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setRoomId(targetRoomId);
       roomIdRef.current = targetRoomId;
       setInviteToken(token);
+      inviteTokenRef.current = token;
       setBootCompleteState(false);
 
       let settled = false;
@@ -419,11 +466,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const acceptRequest = useCallback(() => {
     const socket = ensureSocket();
     if (!joinRequest) return;
-    socket.emit(SocketEvents.ACCEPT_REQUEST, { requestId: joinRequest.requestId }, (ok: boolean) => {
+    const requestId = joinRequest.requestId;
+    socket.emit(SocketEvents.ACCEPT_REQUEST, { requestId }, (ok: boolean) => {
       if (ok) {
         setJoinRequest(null);
         setPeerConnected(true);
+        return;
       }
+      // Guest may have left — drop stale card and re-check.
+      setJoinRequest(null);
+      socket.emit(SocketEvents.GET_PENDING_REQUEST, (request: JoinRequestPayload | null) => {
+        setJoinRequest(request);
+      });
     });
   }, [ensureSocket, joinRequest]);
 
@@ -438,7 +492,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const checkPendingRequest = useCallback((onResult?: (found: boolean) => void) => {
     const socket = ensureSocket();
     socket.emit(SocketEvents.GET_PENDING_REQUEST, (request: JoinRequestPayload | null) => {
-      if (request) setJoinRequest(request);
+      setJoinRequest(request);
       onResult?.(Boolean(request));
     });
   }, [ensureSocket]);
@@ -525,6 +579,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setSessionStartedAt(null);
     setBootCompleteState(false);
     sessionKeyRef.current = null;
+    roomIdRef.current = null;
+    inviteTokenRef.current = null;
     savePersistedSession(null);
   }, []);
 

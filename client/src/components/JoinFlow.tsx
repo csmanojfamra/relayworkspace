@@ -14,7 +14,8 @@ export function JoinFlow() {
   const { roomId = '' } = useParams();
   const [params] = useSearchParams();
   const token = params.get('token') ?? '';
-  const { beginJoin, phase, error, reset, resendJoinRequest } = useSession();
+  const { beginJoin, phase, error, reset, resendJoinRequest, connected, connectionStatus } =
+    useSession();
   const [step, setStep] = useState(0);
   const [requesting, setRequesting] = useState(false);
   const [requestHint, setRequestHint] = useState<string | null>(null);
@@ -116,12 +117,17 @@ export function JoinFlow() {
                 className="mt-6"
               >
                 <p className="font-mono text-xs text-[var(--text-muted)]">
-                  &gt; Host authorization required before tunnel unlocks.
+                  &gt; Waiting for host authorization. Keep this window open.
                 </p>
+                {!connected && (
+                  <p className="mt-2 font-mono text-[11px] text-[var(--warning)]">
+                    &gt; Connection interrupted — restoring request…
+                  </p>
+                )}
                 <Button
                   className="mt-4 w-full"
                   variant="soft"
-                  disabled={requesting}
+                  disabled={requesting || connectionStatus === 'unavailable'}
                   onClick={() => {
                     setRequesting(true);
                     setRequestHint(null);
@@ -130,7 +136,7 @@ export function JoinFlow() {
                       setRequestHint(
                         ok
                           ? '> Access request sent to host again.'
-                          : '> Could not reach host. Try again.'
+                          : '> Could not notify host. Try again.'
                       );
                     });
                   }}

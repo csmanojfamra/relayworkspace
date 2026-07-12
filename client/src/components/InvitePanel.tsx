@@ -52,7 +52,7 @@ export function InvitePanel() {
       setCheckHint(
         found
           ? null
-          : 'No pending request yet. Ask the remote endpoint to open the invite.'
+          : 'No pending request. Ask them to open the invite, or wait for reconnect.'
       );
     });
   };

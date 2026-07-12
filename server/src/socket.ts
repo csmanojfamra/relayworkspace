@@ -401,7 +401,7 @@ export function registerSocketHandlers(io: Server): void {
 
         if (!guestSocket) {
           roomStore.clearPendingRequest(room);
-          emitError(socket, { code: 'GUEST_LEFT', message: 'Remote endpoint disconnected.' });
+          socket.emit(SocketEvents.ROOM_STATE, roomStore.toPublicState(room, 'host'));
           ack?.(false);
           return;
         }
@@ -581,8 +581,8 @@ export function registerSocketHandlers(io: Server): void {
       const stillExists = roomStore.getRoom(room.roomId);
       if (!stillExists) return;
 
-      // Keep pending authorization across brief host disconnects — host rejoin
-      // re-delivers JOIN_REQUEST. Only notify the accepted peer seat.
+      // Notify the other side. For a pending (not-yet-accepted) guest this is the
+      // host — ROOM_STATE carries pendingRequest: null so the authorize card clears.
       const peerId = roomStore.getPeerSocketId(room, role);
       if (peerId) {
         io.to(peerId).emit(SocketEvents.PEER_STATUS, {
@@ -593,6 +593,12 @@ export function registerSocketHandlers(io: Server): void {
         io.to(peerId).emit(
           SocketEvents.ROOM_STATE,
           roomStore.toPublicState(room, role === 'host' ? 'guest' : 'host')
+        );
+      } else if (role !== 'host' && room.hostSocketId) {
+        // Pending guest left while host seat mapping was empty — still refresh host.
+        io.to(room.hostSocketId).emit(
+          SocketEvents.ROOM_STATE,
+          roomStore.toPublicState(room, 'host')
         );
       }
     });
