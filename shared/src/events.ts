@@ -21,6 +21,7 @@ export const SocketEvents = {
   LATENCY: 'latency',
   REJOIN: 'rejoin',
   GET_PENDING_REQUEST: 'get-pending-request',
+  RESEND_JOIN_REQUEST: 'resend-join-request',
 } as const;
 
 export type SocketEventName = (typeof SocketEvents)[keyof typeof SocketEvents];

@@ -212,6 +212,107 @@ export function registerSocketHandlers(io: Server): void {
     );
 
     socket.on(
+      SocketEvents.RESEND_JOIN_REQUEST,
+      (
+        payload: { roomId: string; token: string },
+        ack?: (result: { status: 'pending' } | ErrorPayload) => void
+      ) => {
+        const room = roomStore.getRoom(payload.roomId);
+        if (!room) {
+          const error: ErrorPayload = {
+            code: 'ROOM_NOT_FOUND',
+            message: 'Workspace not found.',
+          };
+          emitError(socket, error);
+          ack?.(error);
+          return;
+        }
+
+        if (room.locked || room.guestSocketId) {
+          const error: ErrorPayload = {
+            code: 'ROOM_FULL',
+            message: 'Workspace Full',
+          };
+          emitError(socket, error);
+          ack?.(error);
+          return;
+        }
+
+        if (!room.hostSocketId) {
+          const error: ErrorPayload = {
+            code: 'HOST_LEFT',
+            message: 'Host is unavailable. Try again shortly.',
+          };
+          emitError(socket, error);
+          ack?.(error);
+          return;
+        }
+
+        // Reuse existing pending request from this guest, or create a new one.
+        let request: JoinRequestPayload;
+        if (
+          room.pendingRequest &&
+          room.pendingRequest.guestSocketId === socket.id
+        ) {
+          request = {
+            requestId: room.pendingRequest.requestId,
+            roomId: room.roomId,
+            guestSocketId: socket.id,
+            createdAt: room.pendingRequest.createdAt,
+          };
+        } else if (room.pendingRequest) {
+          const error: ErrorPayload = {
+            code: 'ROOM_FULL',
+            message: 'An access request is already pending.',
+          };
+          emitError(socket, error);
+          ack?.(error);
+          return;
+        } else {
+          if (!room.inviteToken || room.inviteStatus !== 'active') {
+            const error: ErrorPayload = {
+              code: 'EXPIRED_INVITE',
+              message: 'Invite Expired',
+            };
+            emitError(socket, error);
+            ack?.(error);
+            return;
+          }
+          if (room.inviteToken !== payload.token) {
+            const error: ErrorPayload = {
+              code: 'INVALID_INVITE',
+              message: 'Invalid Invite',
+            };
+            emitError(socket, error);
+            ack?.(error);
+            return;
+          }
+
+          const requestId = generateId();
+          roomStore.setPendingRequest(room, {
+            requestId,
+            guestSocketId: socket.id,
+            createdAt: Date.now(),
+          });
+          request = {
+            requestId,
+            roomId: room.roomId,
+            guestSocketId: socket.id,
+            createdAt: Date.now(),
+          };
+        }
+
+        io.to(room.hostSocketId).emit(SocketEvents.JOIN_REQUEST, request);
+        io.to(room.roomId).emit(SocketEvents.JOIN_REQUEST, request);
+        io.to(room.hostSocketId).emit(
+          SocketEvents.ROOM_STATE,
+          roomStore.toPublicState(room, 'host')
+        );
+        ack?.({ status: 'pending' });
+      }
+    );
+
+    socket.on(
       SocketEvents.GET_PENDING_REQUEST,
       (ack?: (request: JoinRequestPayload | null) => void) => {
         const binding = roomStore.getSocketBinding(socket.id);

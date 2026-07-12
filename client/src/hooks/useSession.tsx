@@ -53,6 +53,7 @@ interface SessionContextValue {
   acceptRequest: () => void;
   rejectRequest: () => void;
   checkPendingRequest: (onResult?: (found: boolean) => void) => void;
+  resendJoinRequest: (onResult?: (ok: boolean) => void) => void;
   sendMessage: (content: string) => void;
   setTyping: (typing: boolean) => void;
   markSeen: (ids: string[]) => void;
@@ -409,6 +410,31 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     });
   }, [ensureSocket]);
 
+  const resendJoinRequest = useCallback(
+    (onResult?: (ok: boolean) => void) => {
+      if (!roomId || !inviteToken) {
+        onResult?.(false);
+        return;
+      }
+      const socket = ensureSocket();
+      socket.emit(
+        SocketEvents.RESEND_JOIN_REQUEST,
+        { roomId, token: inviteToken },
+        (result: { status: 'pending' } | ErrorPayload) => {
+          if ('code' in result) {
+            setError(result);
+            setPhase('error');
+            onResult?.(false);
+            return;
+          }
+          setPhase('waiting-approval');
+          onResult?.(true);
+        }
+      );
+    },
+    [ensureSocket, roomId, inviteToken]
+  );
+
   const sendMessage = useCallback(
     (content: string) => {
       const socket = ensureSocket();
@@ -518,6 +544,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       acceptRequest,
       rejectRequest,
       checkPendingRequest,
+      resendJoinRequest,
       sendMessage,
       setTyping,
       markSeen,
@@ -548,6 +575,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       acceptRequest,
       rejectRequest,
       checkPendingRequest,
+      resendJoinRequest,
       sendMessage,
       setTyping,
       markSeen,

@@ -14,8 +14,10 @@ export function JoinFlow() {
   const { roomId = '' } = useParams();
   const [params] = useSearchParams();
   const token = params.get('token') ?? '';
-  const { beginJoin, phase, error, reset } = useSession();
+  const { beginJoin, phase, error, reset, resendJoinRequest } = useSession();
   const [step, setStep] = useState(0);
+  const [requesting, setRequesting] = useState(false);
+  const [requestHint, setRequestHint] = useState<string | null>(null);
   const started = useMemo(() => Boolean(roomId && token), [roomId, token]);
   const requested = useRef(false);
 
@@ -108,13 +110,39 @@ export function JoinFlow() {
 
           <AnimatePresence>
             {phase === 'waiting-approval' && (
-              <motion.p
+              <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="mt-6 font-mono text-xs text-[var(--text-muted)]"
+                className="mt-6"
               >
-                &gt; Host authorization required before tunnel unlocks.
-              </motion.p>
+                <p className="font-mono text-xs text-[var(--text-muted)]">
+                  &gt; Host authorization required before tunnel unlocks.
+                </p>
+                <Button
+                  className="mt-4 w-full"
+                  variant="soft"
+                  disabled={requesting}
+                  onClick={() => {
+                    setRequesting(true);
+                    setRequestHint(null);
+                    resendJoinRequest((ok) => {
+                      setRequesting(false);
+                      setRequestHint(
+                        ok
+                          ? '> Access request sent to host again.'
+                          : '> Could not reach host. Try again.'
+                      );
+                    });
+                  }}
+                >
+                  {requesting ? 'Requesting…' : 'Request Access'}
+                </Button>
+                {requestHint && (
+                  <p className="mt-3 font-mono text-[11px] text-[var(--text-faint)]">
+                    {requestHint}
+                  </p>
+                )}
+              </motion.div>
             )}
           </AnimatePresence>
         </div>
