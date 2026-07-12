@@ -9,7 +9,7 @@ interface HeaderProps {
 }
 
 export function Header({ onOpenSidebar, showMenu }: HeaderProps) {
-  const { peerConnected, connected, sessionStartedAt, role, latency } = useSession();
+  const { peerConnected, connected, sessionStartedAt, latency } = useSession();
   const elapsed = useElapsed(sessionStartedAt);
 
   const secure = connected && peerConnected;
@@ -86,7 +86,7 @@ export function Header({ onOpenSidebar, showMenu }: HeaderProps) {
           <Stat label="Health" value={health} className="hidden xl:flex" />
           <Stat
             label="Endpoint"
-            value={peerConnected ? (role === 'host' ? 'remote@relay' : 'host@relay') : 'unavailable'}
+            value={peerConnected ? 'REMOTE ENDPOINT' : 'unavailable'}
           />
         </div>
       </div>

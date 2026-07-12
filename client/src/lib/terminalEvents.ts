@@ -8,25 +8,21 @@ export interface SystemEvent {
 }
 
 export const TYPING_LINES = [
-  'Analyzing...',
-  'Compiling response...',
-  'Loading context...',
-  'Reading memory...',
+  'Preparing response...',
+  'Synchronizing...',
+  'Rendering output...',
+  'Compiling context...',
+  'Encrypting stream...',
   'Building output...',
-  'Synchronizing session...',
-  'Rendering response...',
-  'Encrypting packets...',
-  'Processing...',
 ] as const;
 
 export const IDLE_LINES = [
   'Heartbeat OK',
+  'Memory stable',
+  'Connection healthy',
+  'Relay synchronized',
   'Listening...',
-  'Connection stable',
-  'Packets normal',
   'Idle',
-  'Tunnel quiet',
-  'Awaiting input...',
 ] as const;
 
 export function systemPrefix(tone: SystemTone): string {
@@ -50,7 +46,11 @@ export function packetStatus(latency: number | null, connected: boolean): string
   return 'Elevated';
 }
 
-export function connectionHealth(latency: number | null, connected: boolean, peerConnected: boolean): string {
+export function connectionHealth(
+  latency: number | null,
+  connected: boolean,
+  peerConnected: boolean
+): string {
   if (!connected) return 'Degraded';
   if (!peerConnected) return 'Standby';
   if (latency == null) return 'Stabilizing';

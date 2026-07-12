@@ -58,15 +58,16 @@ export function useTerminalTimeline({
       if (peerConnected && !announcedChannel.current) {
         announcedChannel.current = true;
         push('ok', 'Secure tunnel established');
-        push('info', 'Remote endpoint connected');
+        push('info', 'Endpoint connected');
         push('ok', 'Session encrypted');
+        push('ok', 'Relay initialized');
       }
       return;
     }
 
     if (peerConnected && !prevPeer.current) {
       announcedChannel.current = true;
-      push('info', 'Remote endpoint connected');
+      push('info', 'Endpoint connected');
       push('ok', 'Secure tunnel established');
       push('ok', 'Session encrypted');
     } else if (!peerConnected && prevPeer.current) {

@@ -40,6 +40,11 @@ export function formatDateTime(ts: number): string {
 }
 
 export function promptLabel(role: 'host' | 'guest' | 'me' | 'friend'): string {
-  if (role === 'me' || role === 'host') return 'local@relay';
-  return 'remote@relay';
+  if (role === 'me' || role === 'host') return 'LOCAL ENDPOINT';
+  return 'REMOTE ENDPOINT';
 }
+
+export function formatEntryId(index: number): string {
+  return `ENTRY ${String(index).padStart(3, '0')}`;
+}
+

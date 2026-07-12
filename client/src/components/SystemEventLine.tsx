@@ -17,18 +17,20 @@ export function SystemEventLine({ event, compact = false }: SystemEventLineProps
   return (
     <motion.div
       layout
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: compact ? 0.55 : 1, y: 0 }}
-      exit={{ opacity: 0, y: -4 }}
-      transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: compact ? 0.5 : 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
       className="font-mono"
     >
-      <AsciiRule />
-      <div className={`flex items-start gap-2 py-2 text-[12px] leading-relaxed ${toneClass[event.tone]}`}>
+      <div
+        className={`flex items-start gap-2.5 py-2.5 text-[12px] leading-relaxed tracking-wide ${toneClass[event.tone]}`}
+      >
         <span className="shrink-0 select-none opacity-90">{systemPrefix(event.tone)}</span>
-        <span className={event.tone === 'idle' ? 'tracking-wide' : ''}>{event.text}</span>
+        <span className={event.tone === 'idle' ? 'text-[var(--text-faint)]' : ''}>
+          {event.text}
+        </span>
       </div>
-      <AsciiRule />
     </motion.div>
   );
 }
@@ -36,7 +38,7 @@ export function SystemEventLine({ event, compact = false }: SystemEventLineProps
 export function AsciiRule() {
   return (
     <div
-      className="select-none overflow-hidden whitespace-nowrap text-[10px] leading-none tracking-[0.12em] text-[var(--text-faint)] opacity-40"
+      className="select-none overflow-hidden whitespace-nowrap text-[10px] leading-none tracking-[0.18em] text-[var(--text-faint)] opacity-35"
       aria-hidden
     >
       ──────────────────────────────
@@ -48,19 +50,24 @@ export function TypingEvent({ line }: { line: string }) {
   return (
     <motion.div
       key={line}
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-      className="font-mono"
+      transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+      className="font-mono py-3"
     >
-      <AsciiRule />
-      <div className="flex items-center gap-2 py-2 text-[12px] text-[var(--text-muted)]">
+      <p
+        className="text-[11px] font-medium uppercase tracking-[0.18em]"
+        style={{ color: 'var(--peer)' }}
+      >
+        REMOTE ENDPOINT
+      </p>
+      <div className="mt-2 flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
         <span className="text-[var(--accent)]">&gt;</span>
-        <span>Remote endpoint is writing to the session...</span>
+        <span>Preparing response...</span>
       </div>
-      <div className="flex items-center gap-2 pb-2 pl-4 text-[12px] text-[var(--accent)]">
-        <span className="opacity-70">{line}</span>
+      <div className="mt-1 flex items-center gap-2 pl-4 text-[12px] text-[var(--text-faint)]">
+        <span>{line}</span>
         <span className="blink inline-block h-3.5 w-[6px] bg-[var(--cursor)]" />
       </div>
     </motion.div>

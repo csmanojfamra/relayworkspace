@@ -15,7 +15,6 @@ interface CommandInputProps {
 
 /**
  * Inline terminal prompt — last line of the session stream.
- * Not a chat composer: no card, border, placeholder, or send control.
  */
 export function CommandInput({ onSend, onTyping, disabled }: CommandInputProps) {
   const [value, setValue] = useState('');
@@ -79,21 +78,24 @@ export function CommandInput({ onSend, onTyping, disabled }: CommandInputProps) 
       <motion.form
         key={promptKey}
         onSubmit={onSubmit}
-        initial={{ opacity: 0, y: 6 }}
-        animate={{ opacity: disabled ? 0.45 : 1, y: 0 }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: disabled ? 0.4 : 1 }}
         exit={{ opacity: 0 }}
-        transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-        className="terminal-prompt font-mono"
+        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+        className="terminal-prompt font-mono pt-4"
         onClick={() => textareaRef.current?.focus()}
       >
         <p
-          className="select-none text-[12px] font-medium tracking-tight"
+          className="select-none text-[11px] font-medium uppercase tracking-[0.18em]"
           style={{ color: 'var(--me)' }}
         >
-          local@relay:~$
+          LOCAL ENDPOINT
+        </p>
+        <p className="mt-1 select-none text-[11px] tracking-wide text-[var(--text-faint)]">
+          ~/workspace
         </p>
 
-        <div className="mt-1.5 flex items-start gap-2">
+        <div className="mt-2.5 flex items-start gap-2.5">
           <span className="select-none text-[13px] leading-7 text-[var(--accent)] sm:text-sm">
             &gt;
           </span>

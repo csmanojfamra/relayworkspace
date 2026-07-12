@@ -19,7 +19,6 @@ export function Sidebar({ open, onClose, mobile = false, fill = false }: Sidebar
     peerConnected,
     latency,
     sessionStartedAt,
-    role,
   } = useSession();
   const { themeId, setThemeId, themes } = useTheme();
   const elapsed = useElapsed(sessionStartedAt);
@@ -59,7 +58,7 @@ export function Sidebar({ open, onClose, mobile = false, fill = false }: Sidebar
           <Row label="Encryption" value={peerConnected ? 'Active' : 'Pending'} />
           <Row
             label="Remote Endpoint"
-            value={peerConnected ? (role === 'host' ? 'remote@relay' : 'host@relay') : '—'}
+            value={peerConnected ? 'REMOTE ENDPOINT' : '—'}
             mono
           />
           <Row label="Started" value={formatStarted(sessionStartedAt)} />
