@@ -7,10 +7,19 @@ import { useCopyToClipboard } from '@/hooks/useUtilities';
 import { AsciiRule } from '@/components/SystemEventLine';
 
 export function InvitePanel() {
-  const { inviteUrl, roomId, joinRequest, acceptRequest, rejectRequest, peerConnected } =
-    useSession();
+  const {
+    inviteUrl,
+    roomId,
+    joinRequest,
+    acceptRequest,
+    rejectRequest,
+    peerConnected,
+    checkPendingRequest,
+  } = useSession();
   const { copied, copy } = useCopyToClipboard();
   const [qr, setQr] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [checkHint, setCheckHint] = useState<string | null>(null);
 
   useEffect(() => {
     if (!inviteUrl) {
@@ -27,11 +36,32 @@ export function InvitePanel() {
     }).then(setQr);
   }, [inviteUrl]);
 
+  // Keep polling so a missed socket event still surfaces the authorization card.
+  useEffect(() => {
+    if (peerConnected || joinRequest) return;
+    checkPendingRequest();
+    const id = window.setInterval(() => checkPendingRequest(), 2000);
+    return () => window.clearInterval(id);
+  }, [peerConnected, joinRequest, checkPendingRequest]);
+
+  const onManualCheck = () => {
+    setChecking(true);
+    setCheckHint(null);
+    checkPendingRequest((found) => {
+      setChecking(false);
+      setCheckHint(
+        found
+          ? null
+          : 'No pending request yet. Ask the remote endpoint to open the invite.'
+      );
+    });
+  };
+
   if (peerConnected) return null;
 
   return (
     <div className="mx-auto flex w-full max-w-xl flex-col gap-4 px-4 py-6">
-      {joinRequest && (
+      {joinRequest ? (
         <motion.div
           initial={{ opacity: 0, y: 14, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -57,6 +87,30 @@ export function InvitePanel() {
               Deny
             </Button>
           </div>
+        </motion.div>
+      ) : (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="glass rounded-2xl p-5"
+        >
+          <p className="text-[11px] uppercase tracking-[0.24em] text-[var(--text-faint)]">
+            Authorization
+          </p>
+          <p className="mt-3 text-sm text-[var(--text)]">
+            When the remote endpoint opens your invite, their request appears here.
+          </p>
+          <Button
+            className="mt-4 w-full"
+            variant="soft"
+            onClick={onManualCheck}
+            disabled={checking}
+          >
+            {checking ? 'Checking…' : 'Check Incoming Request'}
+          </Button>
+          {checkHint && !joinRequest && (
+            <p className="mt-3 font-mono text-[11px] text-[var(--text-faint)]">{checkHint}</p>
+          )}
         </motion.div>
       )}
 

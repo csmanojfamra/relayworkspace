@@ -212,6 +212,34 @@ export function registerSocketHandlers(io: Server): void {
     );
 
     socket.on(
+      SocketEvents.GET_PENDING_REQUEST,
+      (ack?: (request: JoinRequestPayload | null) => void) => {
+        const binding = roomStore.getSocketBinding(socket.id);
+        if (!binding || binding.role !== 'host') {
+          ack?.(null);
+          return;
+        }
+
+        const room = roomStore.getRoom(binding.roomId);
+        if (!room?.pendingRequest) {
+          ack?.(null);
+          return;
+        }
+
+        const request: JoinRequestPayload = {
+          requestId: room.pendingRequest.requestId,
+          roomId: room.roomId,
+          guestSocketId: room.pendingRequest.guestSocketId,
+          createdAt: room.pendingRequest.createdAt,
+        };
+
+        socket.emit(SocketEvents.JOIN_REQUEST, request);
+        socket.emit(SocketEvents.ROOM_STATE, roomStore.toPublicState(room, 'host'));
+        ack?.(request);
+      }
+    );
+
+    socket.on(
       SocketEvents.ACCEPT_REQUEST,
       (payload: { requestId: string }, ack?: (ok: boolean) => void) => {
         const binding = roomStore.getSocketBinding(socket.id);

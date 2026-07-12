@@ -20,6 +20,7 @@ export const SocketEvents = {
   ROOM_LOCKED: 'room-locked',
   LATENCY: 'latency',
   REJOIN: 'rejoin',
+  GET_PENDING_REQUEST: 'get-pending-request',
 } as const;
 
 export type SocketEventName = (typeof SocketEvents)[keyof typeof SocketEvents];
