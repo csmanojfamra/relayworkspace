@@ -213,6 +213,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     socket.on(SocketEvents.ROOM_STATE, (state: RoomPublicState) => {
       setRoomState(state);
       setPeerConnected(state.peerConnected);
+      if (state.pendingRequest) {
+        setJoinRequest(state.pendingRequest);
+      }
     });
 
     socket.on(SocketEvents.JOIN_REQUEST, (request: JoinRequestPayload) => {

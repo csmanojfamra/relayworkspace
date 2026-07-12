@@ -52,6 +52,8 @@ export interface RoomPublicState {
   peerConnected: boolean;
   peerRole: UserRole | null;
   userCount: number;
+  /** Present only for the host while a guest is waiting for authorization */
+  pendingRequest: JoinRequestPayload | null;
 }
 
 export interface CreateRoomResult {

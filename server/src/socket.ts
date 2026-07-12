@@ -92,6 +92,18 @@ export function registerSocketHandlers(io: Server): void {
         };
 
         socket.emit(SocketEvents.ROOM_STATE, roomStore.toPublicState(room, role));
+
+        // If a guest is still waiting, deliver the authorization card again.
+        if (role === 'host' && room.pendingRequest) {
+          const request: JoinRequestPayload = {
+            requestId: room.pendingRequest.requestId,
+            roomId: room.roomId,
+            guestSocketId: room.pendingRequest.guestSocketId,
+            createdAt: room.pendingRequest.createdAt,
+          };
+          socket.emit(SocketEvents.JOIN_REQUEST, request);
+        }
+
         ack?.(result);
       }
     );
@@ -180,7 +192,13 @@ export function registerSocketHandlers(io: Server): void {
             createdAt: Date.now(),
           };
 
+          // Deliver via socket id and room channel so the host always sees it.
           io.to(room.hostSocketId).emit(SocketEvents.JOIN_REQUEST, request);
+          io.to(roomId).emit(SocketEvents.JOIN_REQUEST, request);
+          io.to(room.hostSocketId).emit(
+            SocketEvents.ROOM_STATE,
+            roomStore.toPublicState(room, 'host')
+          );
           ack?.({ status: 'pending' });
         } catch {
           const error: ErrorPayload = {

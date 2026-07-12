@@ -273,6 +273,15 @@ export class RoomStore {
       peerConnected,
       peerRole: peerConnected ? (viewerRole === 'host' ? 'guest' : 'host') : null,
       userCount: Number(hostConnected) + Number(guestConnected),
+      pendingRequest:
+        viewerRole === 'host' && room.pendingRequest
+          ? {
+              requestId: room.pendingRequest.requestId,
+              roomId: room.roomId,
+              guestSocketId: room.pendingRequest.guestSocketId,
+              createdAt: room.pendingRequest.createdAt,
+            }
+          : null,
     };
   }
 }
