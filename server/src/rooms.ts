@@ -72,10 +72,28 @@ export class RoomStore {
   }
 
   setPendingRequest(room: Room, request: PendingJoinRequest): void {
+    const previous = room.pendingRequest;
+    if (previous && previous.guestSocketId !== request.guestSocketId) {
+      this.socketIndex.delete(previous.guestSocketId);
+    }
+
     room.pendingRequest = request;
+    // Track the waiting guest so reconnect/disconnect is handled, but do not
+    // mark them as the accepted guestSocketId until the host authorizes.
+    this.socketIndex.set(request.guestSocketId, {
+      roomId: room.roomId,
+      role: 'guest',
+    });
   }
 
   clearPendingRequest(room: Room): void {
+    if (room.pendingRequest) {
+      const pendingId = room.pendingRequest.guestSocketId;
+      // Only drop the index entry if they were never accepted into the seat.
+      if (room.guestSocketId !== pendingId) {
+        this.socketIndex.delete(pendingId);
+      }
+    }
     room.pendingRequest = null;
   }
 
@@ -134,7 +152,7 @@ export class RoomStore {
   }
 
   rejectGuest(room: Room): void {
-    room.pendingRequest = null;
+    this.clearPendingRequest(room);
   }
 
   addMessage(room: Room, message: ChatMessage): void {
@@ -230,8 +248,12 @@ export class RoomStore {
       room.pendingRequest = null;
     }
 
-    const bothGone = !room.hostSocketId && !room.guestSocketId && !room.pendingRequest;
-    if (bothGone) {
+    // Keep invite-open workspaces alive across brief host/guest disconnects.
+    // Otherwise a socket reconnect wipes the room before authorization.
+    const bothGone =
+      !room.hostSocketId && !room.guestSocketId && !room.pendingRequest;
+    const keepForInvite = room.inviteStatus === 'active';
+    if (bothGone && !keepForInvite) {
       this.destroyRoom(room.roomId);
       return { room, role: binding.role, destroyed: true };
     }

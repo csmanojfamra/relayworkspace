@@ -158,47 +158,55 @@ export function registerSocketHandlers(io: Server): void {
             return;
           }
 
-          if (!room.hostSocketId) {
-            const error: ErrorPayload = {
-              code: 'HOST_LEFT',
-              message: 'Host is unavailable. Try again shortly.',
-            };
-            emitError(socket, error);
-            ack?.(error);
-            return;
-          }
-
+          // Refresh an existing request from this guest, or replace a stale one
+          // whose socket already disconnected.
           if (room.pendingRequest) {
-            const error: ErrorPayload = {
-              code: 'ROOM_FULL',
-              message: 'An access request is already pending.',
-            };
-            emitError(socket, error);
-            ack?.(error);
-            return;
+            const pendingId = room.pendingRequest.guestSocketId;
+            const pendingAlive = Boolean(io.sockets.sockets.get(pendingId));
+            if (pendingAlive && pendingId !== socket.id) {
+              const error: ErrorPayload = {
+                code: 'ROOM_FULL',
+                message: 'An access request is already pending.',
+              };
+              emitError(socket, error);
+              ack?.(error);
+              return;
+            }
           }
 
-          const requestId = generateId();
+          void socket.join(roomId);
+
+          const requestId =
+            room.pendingRequest?.guestSocketId === socket.id
+              ? room.pendingRequest.requestId
+              : generateId();
+          const createdAt =
+            room.pendingRequest?.guestSocketId === socket.id
+              ? room.pendingRequest.createdAt
+              : Date.now();
+
           roomStore.setPendingRequest(room, {
             requestId,
             guestSocketId: socket.id,
-            createdAt: Date.now(),
+            createdAt,
           });
 
           const request: JoinRequestPayload = {
             requestId,
             roomId,
             guestSocketId: socket.id,
-            createdAt: Date.now(),
+            createdAt,
           };
 
           // Deliver via socket id and room channel so the host always sees it.
-          io.to(room.hostSocketId).emit(SocketEvents.JOIN_REQUEST, request);
+          if (room.hostSocketId) {
+            io.to(room.hostSocketId).emit(SocketEvents.JOIN_REQUEST, request);
+            io.to(room.hostSocketId).emit(
+              SocketEvents.ROOM_STATE,
+              roomStore.toPublicState(room, 'host')
+            );
+          }
           io.to(roomId).emit(SocketEvents.JOIN_REQUEST, request);
-          io.to(room.hostSocketId).emit(
-            SocketEvents.ROOM_STATE,
-            roomStore.toPublicState(room, 'host')
-          );
           ack?.({ status: 'pending' });
         } catch {
           const error: ErrorPayload = {
@@ -238,17 +246,8 @@ export function registerSocketHandlers(io: Server): void {
           return;
         }
 
-        if (!room.hostSocketId) {
-          const error: ErrorPayload = {
-            code: 'HOST_LEFT',
-            message: 'Host is unavailable. Try again shortly.',
-          };
-          emitError(socket, error);
-          ack?.(error);
-          return;
-        }
-
-        // Reuse existing pending request from this guest, or create a new one.
+        // Reuse existing pending request from this guest, replace a stale one,
+        // or create a new request.
         let request: JoinRequestPayload;
         if (
           room.pendingRequest &&
@@ -261,13 +260,49 @@ export function registerSocketHandlers(io: Server): void {
             createdAt: room.pendingRequest.createdAt,
           };
         } else if (room.pendingRequest) {
-          const error: ErrorPayload = {
-            code: 'ROOM_FULL',
-            message: 'An access request is already pending.',
+          const pendingAlive = Boolean(
+            io.sockets.sockets.get(room.pendingRequest.guestSocketId)
+          );
+          if (pendingAlive) {
+            const error: ErrorPayload = {
+              code: 'ROOM_FULL',
+              message: 'An access request is already pending.',
+            };
+            emitError(socket, error);
+            ack?.(error);
+            return;
+          }
+          if (!room.inviteToken || room.inviteStatus !== 'active') {
+            const error: ErrorPayload = {
+              code: 'EXPIRED_INVITE',
+              message: 'Invite Expired',
+            };
+            emitError(socket, error);
+            ack?.(error);
+            return;
+          }
+          if (room.inviteToken !== payload.token) {
+            const error: ErrorPayload = {
+              code: 'INVALID_INVITE',
+              message: 'Invalid Invite',
+            };
+            emitError(socket, error);
+            ack?.(error);
+            return;
+          }
+
+          const requestId = generateId();
+          roomStore.setPendingRequest(room, {
+            requestId,
+            guestSocketId: socket.id,
+            createdAt: Date.now(),
+          });
+          request = {
+            requestId,
+            roomId: room.roomId,
+            guestSocketId: socket.id,
+            createdAt: Date.now(),
           };
-          emitError(socket, error);
-          ack?.(error);
-          return;
         } else {
           if (!room.inviteToken || room.inviteStatus !== 'active') {
             const error: ErrorPayload = {
@@ -302,12 +337,16 @@ export function registerSocketHandlers(io: Server): void {
           };
         }
 
-        io.to(room.hostSocketId).emit(SocketEvents.JOIN_REQUEST, request);
+        void socket.join(room.roomId);
+
+        if (room.hostSocketId) {
+          io.to(room.hostSocketId).emit(SocketEvents.JOIN_REQUEST, request);
+          io.to(room.hostSocketId).emit(
+            SocketEvents.ROOM_STATE,
+            roomStore.toPublicState(room, 'host')
+          );
+        }
         io.to(room.roomId).emit(SocketEvents.JOIN_REQUEST, request);
-        io.to(room.hostSocketId).emit(
-          SocketEvents.ROOM_STATE,
-          roomStore.toPublicState(room, 'host')
-        );
         ack?.({ status: 'pending' });
       }
     );
@@ -542,15 +581,8 @@ export function registerSocketHandlers(io: Server): void {
       const stillExists = roomStore.getRoom(room.roomId);
       if (!stillExists) return;
 
-      if (room.pendingRequest && role === 'host') {
-        const guestSocket = io.sockets.sockets.get(room.pendingRequest.guestSocketId);
-        guestSocket?.emit(SocketEvents.ERROR, {
-          code: 'HOST_LEFT',
-          message: 'Host left the workspace.',
-        } satisfies ErrorPayload);
-        roomStore.clearPendingRequest(room);
-      }
-
+      // Keep pending authorization across brief host disconnects — host rejoin
+      // re-delivers JOIN_REQUEST. Only notify the accepted peer seat.
       const peerId = roomStore.getPeerSocketId(room, role);
       if (peerId) {
         io.to(peerId).emit(SocketEvents.PEER_STATUS, {

@@ -333,25 +333,34 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setPhase('booting');
     setBootCompleteState(false);
 
-    socket.emit(SocketEvents.CREATE_ROOM, (result: CreateRoomResult) => {
-      setRole(result.role);
-      setRoomId(result.roomId);
-      // Always build the invite against the browser origin so production
-      // never ships localhost links if CLIENT_ORIGIN is misconfigured.
-      const origin = window.location.origin.replace(/\/$/, '');
-      setInviteUrl(`${origin}/join/${result.roomId}?token=${result.inviteToken}`);
-      setInviteToken(result.inviteToken);
-      setSessionStartedAt(Date.now());
-      setMessages([]);
-      setPeerConnected(false);
-      setJoinRequest(null);
-      sessionKeyRef.current = result.sessionKey;
-      savePersistedSession({
-        roomId: result.roomId,
-        sessionKey: result.sessionKey,
-        role: result.role,
+    const emitCreate = () => {
+      socket.emit(SocketEvents.CREATE_ROOM, (result: CreateRoomResult) => {
+        setRole(result.role);
+        setRoomId(result.roomId);
+        // Always build the invite against the browser origin so production
+        // never ships localhost links if CLIENT_ORIGIN is misconfigured.
+        const origin = window.location.origin.replace(/\/$/, '');
+        setInviteUrl(`${origin}/join/${result.roomId}?token=${result.inviteToken}`);
+        setInviteToken(result.inviteToken);
+        setSessionStartedAt(Date.now());
+        setMessages([]);
+        setPeerConnected(false);
+        setJoinRequest(null);
+        sessionKeyRef.current = result.sessionKey;
+        savePersistedSession({
+          roomId: result.roomId,
+          sessionKey: result.sessionKey,
+          role: result.role,
+        });
       });
-    });
+    };
+
+    if (socket.connected) {
+      emitCreate();
+    } else {
+      socket.once('connect', emitCreate);
+      if (!socket.active) socket.connect();
+    }
   }, [ensureSocket]);
 
   const beginJoin = useCallback(
@@ -363,22 +372,30 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setInviteToken(token);
       setBootCompleteState(false);
 
-      window.setTimeout(() => setPhase('waiting-approval'), 1200);
+      const emitJoin = () => {
+        socket.emit(
+          SocketEvents.JOIN_ROOM,
+          { roomId: targetRoomId, token },
+          (result: { status: 'pending' } | JoinResult | ErrorPayload) => {
+            if ('code' in result) {
+              setError(result);
+              setPhase('error');
+              return;
+            }
+            if ('status' in result && result.status === 'pending') {
+              setPhase('waiting-approval');
+            }
+          }
+        );
+      };
 
-      socket.emit(
-        SocketEvents.JOIN_ROOM,
-        { roomId: targetRoomId, token },
-        (result: { status: 'pending' } | JoinResult | ErrorPayload) => {
-          if ('code' in result) {
-            setError(result);
-            setPhase('error');
-            return;
-          }
-          if ('status' in result && result.status === 'pending') {
-            setPhase('waiting-approval');
-          }
-        }
-      );
+      // Wait for socket connect so the join is not lost on a cold start.
+      if (socket.connected) {
+        emitJoin();
+      } else {
+        socket.once('connect', emitJoin);
+        if (!socket.active) socket.connect();
+      }
     },
     [ensureSocket]
   );
@@ -417,20 +434,34 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         return;
       }
       const socket = ensureSocket();
-      socket.emit(
-        SocketEvents.RESEND_JOIN_REQUEST,
-        { roomId, token: inviteToken },
-        (result: { status: 'pending' } | ErrorPayload) => {
-          if ('code' in result) {
-            setError(result);
-            setPhase('error');
-            onResult?.(false);
-            return;
+      const emitResend = () => {
+        socket.emit(
+          SocketEvents.RESEND_JOIN_REQUEST,
+          { roomId, token: inviteToken },
+          (result: { status: 'pending' } | ErrorPayload) => {
+            if ('code' in result) {
+              // Keep guest on the waiting screen for transient host blips.
+              if (result.code === 'HOST_LEFT' || result.code === 'ROOM_FULL') {
+                onResult?.(false);
+                return;
+              }
+              setError(result);
+              setPhase('error');
+              onResult?.(false);
+              return;
+            }
+            setPhase('waiting-approval');
+            onResult?.(true);
           }
-          setPhase('waiting-approval');
-          onResult?.(true);
-        }
-      );
+        );
+      };
+
+      if (socket.connected) {
+        emitResend();
+      } else {
+        socket.once('connect', emitResend);
+        if (!socket.active) socket.connect();
+      }
     },
     [ensureSocket, roomId, inviteToken]
   );
