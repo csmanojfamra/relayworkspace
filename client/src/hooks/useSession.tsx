@@ -314,7 +314,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     heartbeatRef.current = window.setInterval(() => {
       if (!socket.connected) return;
       pingSentRef.current = performance.now();
-      socket.emit(SocketEvents.HEARTBEAT, { roomId: roomId ?? '' }, () => {
+      // Use ref so changing roomId does not tear down the live socket mid-join.
+      socket.emit(SocketEvents.HEARTBEAT, { roomId: roomIdRef.current ?? '' }, () => {
         const rtt = Math.round(performance.now() - pingSentRef.current);
         setLatency(rtt);
       });
@@ -325,7 +326,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [ensureSocket, roomId]);
+  }, [ensureSocket]);
 
   const createSession = useCallback(() => {
     const socket = ensureSocket();
@@ -369,14 +370,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setError(null);
       setPhase('joining');
       setRoomId(targetRoomId);
+      roomIdRef.current = targetRoomId;
       setInviteToken(token);
       setBootCompleteState(false);
 
+      let settled = false;
       const emitJoin = () => {
-        socket.emit(
+        const active = socketRef.current ?? socket;
+        active.emit(
           SocketEvents.JOIN_ROOM,
           { roomId: targetRoomId, token },
           (result: { status: 'pending' } | JoinResult | ErrorPayload) => {
+            settled = true;
             if ('code' in result) {
               setError(result);
               setPhase('error');
@@ -396,6 +401,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         socket.once('connect', emitJoin);
         if (!socket.active) socket.connect();
       }
+
+      // Surface a real error if the API never answers (wrong VITE_SOCKET_URL, etc).
+      window.setTimeout(() => {
+        if (settled) return;
+        if (phaseRef.current !== 'joining') return;
+        setError({
+          code: 'SERVER_ERROR',
+          message: 'Could not reach Relay. Check connection and try again.',
+        });
+        setPhase('error');
+      }, 12000);
     },
     [ensureSocket]
   );
