@@ -78,11 +78,13 @@ npm run dev
 | `VITE_SOCKET_URL` | `http://localhost:3001` locally | Socket.IO server URL |
 | `VITE_API_PROXY` | `http://localhost:3001` | Dev proxy target for `/socket.io` |
 
-Create `client/.env.production` for Netlify:
+Create `client/.env.production` for Netlify (or set the same variable in the Netlify UI):
 
 ```env
 VITE_SOCKET_URL=https://your-railway-app.up.railway.app
 ```
+
+`VITE_SOCKET_URL` is baked in at **build time**. After changing it, trigger a new Netlify deploy.
 
 Create Railway env:
 
@@ -90,6 +92,17 @@ Create Railway env:
 CLIENT_ORIGIN=https://your-netlify-site.netlify.app
 PORT=3001
 ```
+
+### Live site button stays disabled?
+
+The landing CTA enables only when the browser is connected to the Socket.IO API.
+
+1. Deploy the **server** on Railway and confirm `https://YOUR-API/health` returns JSON.
+2. In Netlify → Site settings → Environment variables, set `VITE_SOCKET_URL` to that Railway URL.
+3. Redeploy the Netlify site (env vars apply on build).
+4. On Railway, set `CLIENT_ORIGIN` to your exact Netlify origin (e.g. `https://something.netlify.app`).
+
+Until the frontend can reach the backend, the UI will show **Relay unreachable**.
 
 ## Production build
 

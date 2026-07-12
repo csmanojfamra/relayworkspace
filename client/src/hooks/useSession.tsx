@@ -20,7 +20,7 @@ import {
   type RoomPublicState,
   type UserRole,
 } from '@terminalchat/shared';
-import { getSocketUrl } from '@/lib/utils';
+import { getSocketUrl, isSocketUrlConfigured } from '@/lib/utils';
 
 type SessionPhase =
   | 'landing'
@@ -45,6 +45,7 @@ interface SessionContextValue {
   joinRequest: JoinRequestPayload | null;
   error: ErrorPayload | null;
   connected: boolean;
+  connectionStatus: 'connecting' | 'connected' | 'unavailable';
   sessionStartedAt: number | null;
   bootComplete: boolean;
   createSession: () => void;
@@ -57,6 +58,7 @@ interface SessionContextValue {
   reset: () => void;
   setBootComplete: () => void;
   clearError: () => void;
+  reconnect: () => void;
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null);
@@ -107,6 +109,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [joinRequest, setJoinRequest] = useState<JoinRequestPayload | null>(null);
   const [error, setError] = useState<ErrorPayload | null>(null);
   const [connected, setConnected] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<
+    'connecting' | 'connected' | 'unavailable'
+  >(() => (isSocketUrlConfigured() ? 'connecting' : 'unavailable'));
   const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null);
   const [bootComplete, setBootCompleteState] = useState(false);
 
@@ -121,14 +126,25 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const ensureSocket = useCallback(() => {
     if (socketRef.current) return socketRef.current;
 
-    const socket = io(getSocketUrl(), {
-      autoConnect: true,
+    const url = getSocketUrl();
+    if (!url) {
+      setConnectionStatus('unavailable');
+      setConnected(false);
+      // Still create a disconnected stub-less path: callers expect a socket.
+      // Use current origin so Socket.IO exists, but mark unavailable for UI.
+    }
+
+    const socket = io(url || undefined, {
+      autoConnect: Boolean(url),
       transports: ['websocket', 'polling'],
-      reconnection: true,
+      reconnection: Boolean(url),
       reconnectionAttempts: Infinity,
       reconnectionDelay: 800,
       reconnectionDelayMax: 4000,
+      timeout: 8000,
     });
+
+    if (url) setConnectionStatus('connecting');
 
     const attemptRejoin = () => {
       const persisted = loadPersistedSession();
@@ -163,14 +179,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
     socket.on('connect', () => {
       setConnected(true);
+      setConnectionStatus('connected');
       setError((prev) => (prev?.code === 'SERVER_ERROR' ? null : prev));
       attemptRejoin();
     });
 
     socket.on('disconnect', () => {
       setConnected(false);
+      setConnectionStatus((prev) => (prev === 'unavailable' ? prev : 'connecting'));
     });
 
+    socket.on('connect_error', () => {
+      setConnected(false);
+      setConnectionStatus('unavailable');
+    });
     socket.on(SocketEvents.ROOM_STATE, (state: RoomPublicState) => {
       setRoomState(state);
       setPeerConnected(state.peerConnected);
@@ -416,6 +438,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const clearError = useCallback(() => setError(null), []);
 
+  const reconnect = useCallback(() => {
+    if (!isSocketUrlConfigured()) {
+      setConnectionStatus('unavailable');
+      setConnected(false);
+      return;
+    }
+    setConnectionStatus('connecting');
+    const socket = ensureSocket();
+    if (!socket.connected) {
+      socket.connect();
+    }
+  }, [ensureSocket]);
+
   const value = useMemo<SessionContextValue>(
     () => ({
       phase,
@@ -431,6 +466,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       joinRequest,
       error,
       connected,
+      connectionStatus,
       sessionStartedAt,
       bootComplete,
       createSession,
@@ -443,6 +479,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       reset,
       setBootComplete,
       clearError,
+      reconnect,
     }),
     [
       phase,
@@ -458,6 +495,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       joinRequest,
       error,
       connected,
+      connectionStatus,
       sessionStartedAt,
       bootComplete,
       createSession,
@@ -470,6 +508,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       reset,
       setBootComplete,
       clearError,
+      reconnect,
     ]
   );
 

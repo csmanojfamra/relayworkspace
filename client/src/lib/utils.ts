@@ -1,14 +1,24 @@
-const envUrl = import.meta.env.VITE_SOCKET_URL as string | undefined;
+const envUrl = (import.meta.env.VITE_SOCKET_URL as string | undefined)?.trim();
 
+/**
+ * Resolve the Socket.IO server URL.
+ * Priority: VITE_SOCKET_URL → localhost fallback → same-origin (only if explicitly empty env is intentional).
+ */
 export function getSocketUrl(): string {
-  if (envUrl && envUrl.length > 0) return envUrl;
+  if (envUrl) return envUrl.replace(/\/$/, '');
+
   if (typeof window !== 'undefined') {
     const { protocol, hostname } = window.location;
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
       return `${protocol}//${hostname}:3001`;
     }
   }
+
   return '';
+}
+
+export function isSocketUrlConfigured(): boolean {
+  return Boolean(getSocketUrl());
 }
 
 export function formatTime(ts: number): string {

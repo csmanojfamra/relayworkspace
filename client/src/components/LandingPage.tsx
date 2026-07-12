@@ -3,7 +3,14 @@ import { Button } from '@/components/ui/Button';
 import { useSession } from '@/hooks/useSession';
 
 export function LandingPage() {
-  const { createSession, connected } = useSession();
+  const { createSession, connected, connectionStatus, reconnect } = useSession();
+
+  const statusText =
+    connectionStatus === 'connected'
+      ? '> Secure relay available.'
+      : connectionStatus === 'connecting'
+        ? '> Connecting core services...'
+        : '> Relay unreachable — backend URL not configured.';
 
   return (
     <div className="app-shell safe-pad relative overflow-hidden">
@@ -49,13 +56,24 @@ export function LandingPage() {
             >
               Initialize Workspace
             </Button>
+
+            {connectionStatus === 'unavailable' && (
+              <Button variant="ghost" size="sm" onClick={reconnect}>
+                Retry connection
+              </Button>
+            )}
+
             <motion.p
-              key={connected ? 'ready' : 'wait'}
+              key={statusText}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="font-mono text-[11px] text-[var(--text-faint)]"
+              className={`font-mono text-[11px] ${
+                connectionStatus === 'unavailable'
+                  ? 'text-[var(--warning)]'
+                  : 'text-[var(--text-faint)]'
+              }`}
             >
-              {connected ? '> Secure relay available.' : '> Connecting core services...'}
+              {statusText}
             </motion.p>
           </div>
         </motion.div>
