@@ -1,7 +1,11 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSession } from '@/hooks/useSession';
 import { useElapsed } from '@/hooks/useUtilities';
-import { connectionHealth, packetStatus } from '@/lib/terminalEvents';
+import {
+  memoryStatus,
+  sessionStatus,
+  syncStatus,
+} from '@/lib/terminalEvents';
 
 interface HeaderProps {
   onOpenSidebar?: () => void;
@@ -19,12 +23,13 @@ export function Header({ onOpenSidebar, showMenu }: HeaderProps) {
       ? 'Secure Workspace'
       : 'Awaiting Endpoint';
 
-  const health = connectionHealth(latency, connected, peerConnected);
-  const packets = packetStatus(latency, connected);
+  const session = sessionStatus(connected, peerConnected);
+  const sync = syncStatus(latency, connected, peerConnected);
+  const memory = memoryStatus(latency, connected);
 
   return (
     <header className="status-bar shrink-0 border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--bg-elevated)_90%,transparent)] backdrop-blur-2xl">
-      <div className="flex items-center justify-between gap-3 px-3 py-2.5 sm:px-4">
+      <div className="flex items-center justify-between gap-3 px-3 py-2.5 sm:px-5">
         <div className="flex min-w-0 items-center gap-2.5">
           {showMenu && (
             <motion.button
@@ -75,27 +80,28 @@ export function Header({ onOpenSidebar, showMenu }: HeaderProps) {
           </div>
         </div>
 
-        <div className="flex shrink-0 items-stretch gap-2 sm:gap-3">
-          <Stat label="Duration" value={elapsed} className="hidden sm:flex" />
+        <div className="flex shrink-0 items-stretch gap-2.5 sm:gap-4">
+          <Stat label="Session" value={session} className="hidden sm:flex" />
           <Stat
             label="Latency"
-            value={latency != null ? `${latency}ms` : '—'}
+            value={latency != null ? `${latency} ms` : '—'}
             className="hidden md:flex"
           />
-          <Stat label="Packets" value={packets} className="hidden lg:flex" />
-          <Stat label="Health" value={health} className="hidden xl:flex" />
+          <Stat label="Sync" value={sync} className="hidden lg:flex" />
+          <Stat label="Uptime" value={elapsed} className="hidden xl:flex" />
           <Stat
-            label="Endpoint"
-            value={peerConnected ? 'REMOTE ENDPOINT' : 'unavailable'}
+            label="Remote"
+            value={peerConnected ? 'Connected' : 'Offline'}
           />
+          <Stat label="Memory" value={memory} className="hidden 2xl:flex" />
         </div>
       </div>
 
       <div className="flex gap-3 overflow-x-auto border-t border-[var(--border)] px-3 py-1.5 no-scrollbar sm:hidden">
+        <MiniStat label="Session" value={session} />
+        <MiniStat label="RTT" value={latency != null ? `${latency} ms` : '—'} />
+        <MiniStat label="Sync" value={sync} />
         <MiniStat label="Up" value={elapsed} />
-        <MiniStat label="RTT" value={latency != null ? `${latency}ms` : '—'} />
-        <MiniStat label="Pkt" value={packets} />
-        <MiniStat label="Health" value={health} />
       </div>
     </header>
   );
@@ -115,8 +121,9 @@ function Stat({
       <p className="text-[9px] uppercase tracking-[0.16em] text-[var(--text-faint)]">{label}</p>
       <motion.p
         key={value}
-        initial={{ opacity: 0.4, y: 1 }}
+        initial={{ opacity: 0.45, y: 1 }}
         animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.2 }}
         className="truncate font-mono text-[11px] text-[var(--text)]"
       >
         {value}

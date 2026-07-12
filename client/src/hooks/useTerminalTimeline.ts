@@ -124,7 +124,7 @@ export function useTerminalTimeline({
 
     const tick = () => {
       const quietFor = Date.now() - lastActivity.current;
-      if (quietFor < 30000) {
+      if (quietFor < 45000) {
         setAmbient(null);
         return;
       }
@@ -132,8 +132,8 @@ export function useTerminalTimeline({
       setAmbient(makeEvent('idle', line));
     };
 
-    const id = window.setInterval(tick, 45000);
-    const first = window.setTimeout(tick, 32000 + Math.floor(Math.random() * 12000));
+    const id = window.setInterval(tick, 60000 + Math.floor(Math.random() * 30000));
+    const first = window.setTimeout(tick, 45000 + Math.floor(Math.random() * 45000));
     return () => {
       window.clearInterval(id);
       window.clearTimeout(first);

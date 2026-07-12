@@ -58,13 +58,13 @@ export function Sidebar({ open, onClose, mobile = false, fill = false }: Sidebar
           <Row label="Encryption" value={peerConnected ? 'Active' : 'Pending'} />
           <Row
             label="Remote Endpoint"
-            value={peerConnected ? 'REMOTE ENDPOINT' : '—'}
+            value={peerConnected ? 'Connected' : '—'}
             mono
           />
           <Row label="Started" value={formatStarted(sessionStartedAt)} />
-          <Row label="Duration" value={elapsed} mono />
+          <Row label="Uptime" value={elapsed} mono />
           <Row label="Latency" value={latency != null ? `${latency} ms` : '—'} mono />
-          <Row label="Session Health" value={health} />
+          <Row label="Sync" value={health} />
         </Section>
 
         <Section title="Theme">

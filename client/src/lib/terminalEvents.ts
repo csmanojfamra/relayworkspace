@@ -8,21 +8,19 @@ export interface SystemEvent {
 }
 
 export const TYPING_LINES = [
-  'Preparing response...',
+  'Preparing output...',
   'Synchronizing...',
   'Rendering output...',
-  'Compiling context...',
   'Encrypting stream...',
-  'Building output...',
 ] as const;
 
 export const IDLE_LINES = [
   'Heartbeat OK',
-  'Memory stable',
-  'Connection healthy',
-  'Relay synchronized',
-  'Listening...',
-  'Idle',
+  'Memory Optimized',
+  'Relay Synchronized',
+  'Connection Stable',
+  'Workspace Verified',
+  'Session Healthy',
 ] as const;
 
 export function systemPrefix(tone: SystemTone): string {
@@ -34,15 +32,33 @@ export function systemPrefix(tone: SystemTone): string {
     case 'idle':
       return '·';
     default:
-      return '>';
+      return '›';
   }
 }
 
-export function packetStatus(latency: number | null, connected: boolean): string {
+export function syncStatus(
+  latency: number | null,
+  connected: boolean,
+  peerConnected: boolean
+): string {
   if (!connected) return 'Interrupted';
+  if (!peerConnected) return 'Standby';
   if (latency == null) return 'Syncing';
-  if (latency < 80) return 'Optimal';
-  if (latency < 160) return 'Normal';
+  if (latency < 120) return 'Healthy';
+  if (latency < 220) return 'Stable';
+  return 'Degraded';
+}
+
+export function sessionStatus(connected: boolean, peerConnected: boolean): string {
+  if (!connected) return 'Reconnecting';
+  if (!peerConnected) return 'Standby';
+  return 'Active';
+}
+
+export function memoryStatus(latency: number | null, connected: boolean): string {
+  if (!connected) return 'Paused';
+  if (latency == null) return 'Warming';
+  if (latency < 200) return 'Normal';
   return 'Elevated';
 }
 
@@ -51,10 +67,10 @@ export function connectionHealth(
   connected: boolean,
   peerConnected: boolean
 ): string {
-  if (!connected) return 'Degraded';
-  if (!peerConnected) return 'Standby';
-  if (latency == null) return 'Stabilizing';
-  if (latency < 120) return 'Excellent';
-  if (latency < 220) return 'Stable';
-  return 'Fair';
+  return syncStatus(latency, connected, peerConnected);
+}
+
+/** @deprecated Prefer syncStatus — kept for sidebar compatibility */
+export function packetStatus(latency: number | null, connected: boolean): string {
+  return syncStatus(latency, connected, true);
 }

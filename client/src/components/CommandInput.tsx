@@ -13,9 +13,7 @@ interface CommandInputProps {
   disabled?: boolean;
 }
 
-/**
- * Inline terminal prompt — last line of the session stream.
- */
+/** Live shell prompt — last line of the terminal stream. */
 export function CommandInput({ onSend, onTyping, disabled }: CommandInputProps) {
   const [value, setValue] = useState('');
   const [promptKey, setPromptKey] = useState(0);
@@ -81,24 +79,17 @@ export function CommandInput({ onSend, onTyping, disabled }: CommandInputProps) 
         initial={{ opacity: 0 }}
         animate={{ opacity: disabled ? 0.4 : 1 }}
         exit={{ opacity: 0 }}
-        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-        className="terminal-prompt font-mono pt-4"
+        transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+        className="terminal-prompt font-mono pt-6"
         onClick={() => textareaRef.current?.focus()}
       >
-        <p
-          className="select-none text-[11px] font-medium uppercase tracking-[0.18em]"
-          style={{ color: 'var(--me)' }}
-        >
-          LOCAL ENDPOINT
-        </p>
-        <p className="mt-1 select-none text-[11px] tracking-wide text-[var(--text-faint)]">
-          ~/workspace
+        <p className="select-none text-[12px] leading-6 tracking-tight text-[var(--text-muted)]">
+          <span style={{ color: 'var(--me)' }}>local.endpoint</span>
+          <span className="text-[var(--text-faint)]"> ~/workspace</span>
         </p>
 
-        <div className="mt-2.5 flex items-start gap-2.5">
-          <span className="select-none text-[13px] leading-7 text-[var(--accent)] sm:text-sm">
-            &gt;
-          </span>
+        <div className="mt-1.5 flex items-start gap-2.5">
+          <span className="select-none text-[14px] leading-7 text-[var(--accent)]">❯</span>
           <div className="relative min-w-0 flex-1">
             <textarea
               ref={textareaRef}
@@ -119,7 +110,7 @@ export function CommandInput({ onSend, onTyping, disabled }: CommandInputProps) 
             />
             {!value && !disabled && (
               <span
-                className="blink pointer-events-none absolute left-0 top-[5px] inline-block h-[16px] w-[8px] bg-[var(--cursor)]"
+                className="blink pointer-events-none absolute left-0 top-[6px] inline-block h-[15px] w-[7px] bg-[var(--cursor)]"
                 aria-hidden
               />
             )}
