@@ -47,8 +47,8 @@ export function MessageStream({
 }: MessageStreamProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const revealAt = useRef(new Map<string, number>());
-  const [now, setNow] = useState(() => Date.now());
+  const stageTimers = useRef(new Map<string, number>());
+  const [revealedIds, setRevealedIds] = useState(() => new Set<string>());
 
   const { events, typingLine, ambient } = useTerminalTimeline({
     peerConnected,
@@ -58,65 +58,100 @@ export function MessageStream({
     active: true,
   });
 
-  // Client-only stage delay for remote entries (delivery unchanged).
+  // Stage remote entries once with timeouts — no 48ms re-render loop (that stole focus).
   useEffect(() => {
-    const t = Date.now();
-    let waiting = false;
-
     for (const message of messages) {
       const mine = message.senderRole === role;
       if (mine) {
-        if (!revealAt.current.has(message.id)) revealAt.current.set(message.id, 0);
+        if (!revealedIds.has(message.id)) {
+          setRevealedIds((prev) => {
+            if (prev.has(message.id)) return prev;
+            const next = new Set(prev);
+            next.add(message.id);
+            return next;
+          });
+        }
         continue;
       }
-      if (!revealAt.current.has(message.id)) {
-        revealAt.current.set(message.id, t + 320 + Math.floor(Math.random() * 480));
-      }
-      if ((revealAt.current.get(message.id) ?? 0) > t) waiting = true;
-    }
 
-    if (!waiting) {
-      setNow(t);
-      return;
-    }
+      if (revealedIds.has(message.id) || stageTimers.current.has(message.id)) continue;
 
-    const id = window.setInterval(() => setNow(Date.now()), 48);
-    return () => window.clearInterval(id);
-  }, [messages, role]);
+      const delay = 260 + Math.floor(Math.random() * 280);
+      const timer = window.setTimeout(() => {
+        stageTimers.current.delete(message.id);
+        setRevealedIds((prev) => {
+          if (prev.has(message.id)) return prev;
+          const next = new Set(prev);
+          next.add(message.id);
+          return next;
+        });
+      }, delay);
+      stageTimers.current.set(message.id, timer);
+    }
+  }, [messages, role, revealedIds]);
+
+  useEffect(() => {
+    return () => {
+      for (const timer of stageTimers.current.values()) window.clearTimeout(timer);
+      stageTimers.current.clear();
+    };
+  }, []);
 
   const displayItems = useMemo(
-    () => buildStream(messages, events, role, revealAt.current, now),
-    [messages, events, role, now]
+    () => buildStream(messages, events, role, revealedIds),
+    [messages, events, role, revealedIds]
   );
 
   const stagingRemote = displayItems.some((i) => i.kind === 'entry' && i.staged);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [displayItems.length, typingLine, ambient?.id, stagingRemote]);
+    const root = scrollRef.current;
+    if (!root) return;
+
+    // Direct scrollTop never steals textarea focus (unlike scrollIntoView on iOS/Safari).
+    const pin = () => {
+      root.scrollTop = root.scrollHeight;
+    };
+
+    const active = document.activeElement;
+    const typing =
+      active instanceof HTMLTextAreaElement && root.contains(active);
+
+    if (typing) {
+      pin();
+      return;
+    }
+
+    // Slight delay so layout settles after a new entry appears.
+    const id = window.setTimeout(pin, 16);
+    return () => window.clearTimeout(id);
+  }, [displayItems.length, typingLine, ambient?.id, stagingRemote, revealedIds.size]);
 
   useEffect(() => {
     if (!role || !onVisible) return;
     const pending = messages
       .filter((m) => {
+        // Don't mark staged (still preparing) remote entries as seen yet.
+        if (m.senderRole !== role && !revealedIds.has(m.id)) return false;
         if (role === 'host') return !m.seenByHost;
         if (role === 'guest') return !m.seenByGuest;
         return false;
       })
       .map((m) => m.id);
     if (pending.length) onVisible(pending);
-  }, [messages, role, onVisible]);
+  }, [messages, role, onVisible, revealedIds]);
 
   return (
     <div
       ref={scrollRef}
-      className="scroll-y terminal-scroll h-full px-5 py-6 sm:px-10 sm:py-8"
+      className="scroll-y terminal-scroll h-full px-5 py-6 font-mono sm:px-10 sm:py-8"
       onMouseDown={(e) => {
         const target = e.target as HTMLElement;
         if (target.closest('textarea, button, a, input')) return;
         const prompt = scrollRef.current?.querySelector('textarea');
         if (prompt instanceof HTMLTextAreaElement && !prompt.disabled) {
-          requestAnimationFrame(() => prompt.focus());
+          e.preventDefault();
+          prompt.focus();
         }
       }}
     >
@@ -222,24 +257,24 @@ function TerminalEntry({
       className="font-mono py-5"
     >
       <p
-        className="text-[11px] font-medium uppercase tracking-[0.16em]"
+        className="font-mono text-[11px] font-medium uppercase tracking-[0.16em]"
         style={{ color: mine ? 'var(--me)' : 'var(--peer)' }}
       >
         {endpoint}
       </p>
 
-      <p className="mt-1.5 text-[11px] tracking-wide text-[var(--text-faint)]">
+      <p className="mt-1.5 font-mono text-[11px] tracking-wide text-[var(--text-faint)]">
         <span className="text-[var(--text-muted)]">{formatEntryId(entryNo)}</span>
         <span className="mx-1.5 opacity-40">·</span>
         <span className="tabular-nums">{formatTime(message.timestamp)}</span>
       </p>
 
-      <p className="mt-3 whitespace-pre-wrap break-words text-[13px] leading-7 text-[var(--text)] sm:text-[14px]">
+      <p className="mt-3 whitespace-pre-wrap break-words font-mono text-[13px] leading-7 text-[var(--text)] sm:text-[14px]">
         {message.content}
       </p>
 
       <div className="mt-2.5 flex items-center gap-3">
-        <p className="text-[10px] tracking-wide text-[var(--text-faint)]">
+        <p className="font-mono text-[10px] tracking-wide text-[var(--text-faint)]">
           {hasTtl ? (
             <>
               <span className="text-[var(--text-muted)]">Memory TTL</span>{' '}
@@ -269,8 +304,7 @@ function buildStream(
   messages: ChatMessage[],
   events: ReturnType<typeof useTerminalTimeline>['events'],
   role: UserRole | null,
-  revealMap: Map<string, number>,
-  now: number
+  revealedIds: Set<string>
 ): StreamItem[] {
   const merged: Array<
     | { kind: 'entry'; at: number; message: ChatMessage }
@@ -291,8 +325,7 @@ function buildStream(
 
     entryNo += 1;
     const mine = entry.message.senderRole === role;
-    const reveal = revealMap.get(entry.message.id) ?? 0;
-    const staged = !mine && reveal > now;
+    const staged = !mine && !revealedIds.has(entry.message.id);
 
     items.push({
       kind: 'entry',
