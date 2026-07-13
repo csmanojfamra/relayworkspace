@@ -71,7 +71,7 @@ export function useTerminalTimeline({
       push('ok', 'Secure tunnel established');
       push('ok', 'Session encrypted');
     } else if (!peerConnected && prevPeer.current) {
-      push('warn', 'Remote endpoint disconnected');
+      push('warn', 'Remote endpoint disconnected — session held');
     }
 
     prevPeer.current = peerConnected;

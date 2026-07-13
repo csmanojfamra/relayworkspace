@@ -156,7 +156,16 @@ export function MessageStream({
           <div className="pt-2">
             {displayItems.length === 0 && !typingLine && !ambient && (
               <p className="mb-5 font-mono text-[11px] tracking-wide text-[var(--text-faint)]">
-                {peerConnected ? 'Awaiting input.' : 'Waiting for remote endpoint.'}
+                {peerConnected
+                  ? 'Awaiting input.'
+                  : connected
+                    ? 'Remote endpoint offline — you can still write entries.'
+                    : 'Waiting for connection…'}
+              </p>
+            )}
+            {peerConnected === false && connected && displayItems.length > 0 && (
+              <p className="mb-3 font-mono text-[10px] tracking-wide text-[var(--text-faint)]">
+                Remote offline — new entries sync on reconnect.
               </p>
             )}
             <CommandInput

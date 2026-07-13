@@ -12,6 +12,7 @@ import { useIsMobile } from '@/hooks/useMediaQuery';
 export function Workspace() {
   const {
     role,
+    phase,
     messages,
     peerTyping,
     peerConnected,
@@ -30,7 +31,8 @@ export function Workspace() {
     [markSeen]
   );
 
-  const showInvite = role === 'host' && !peerConnected && messages.length === 0;
+  // Invite UI only before the tunnel is established — never after chat starts.
+  const showInvite = role === 'host' && phase === 'host-ready' && !peerConnected;
 
   return (
     <motion.div
@@ -62,7 +64,7 @@ export function Workspace() {
                 onVisible={onVisible}
                 onSend={sendMessage}
                 onTyping={setTyping}
-                inputDisabled={!peerConnected}
+                inputDisabled={!connected}
               />
             )}
           </main>

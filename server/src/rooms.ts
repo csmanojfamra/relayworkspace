@@ -6,6 +6,9 @@ import type {
 } from '@terminalchat/shared';
 import { MESSAGE_TTL_MS } from '@terminalchat/shared';
 
+/** Keep locked sessions alive after both endpoints briefly leave (refresh / network blip). */
+export const LOCKED_ROOM_GRACE_MS = 30 * 60 * 1000;
+
 export interface PendingJoinRequest {
   requestId: string;
   guestSocketId: string;
@@ -30,6 +33,7 @@ export class RoomStore {
   private rooms = new Map<string, Room>();
   private tokenIndex = new Map<string, string>();
   private socketIndex = new Map<string, { roomId: string; role: UserRole }>();
+  private orphanTimers = new Map<string, NodeJS.Timeout>();
 
   createRoom(
     hostSocketId: string,
@@ -54,6 +58,7 @@ export class RoomStore {
     this.rooms.set(roomId, room);
     this.tokenIndex.set(inviteToken, roomId);
     this.socketIndex.set(hostSocketId, { roomId, role: 'host' });
+    this.cancelOrphanCleanup(roomId);
     return room;
   }
 
@@ -130,6 +135,7 @@ export class RoomStore {
       }
       room.hostSocketId = socketId;
       this.socketIndex.set(socketId, { roomId, role: 'host' });
+      this.cancelOrphanCleanup(roomId);
       for (const message of room.messages) {
         if (!message.delivered) message.delivered = true;
       }
@@ -142,6 +148,7 @@ export class RoomStore {
       }
       room.guestSocketId = socketId;
       this.socketIndex.set(socketId, { roomId, role: 'guest' });
+      this.cancelOrphanCleanup(roomId);
       for (const message of room.messages) {
         if (!message.delivered) message.delivered = true;
       }
@@ -249,11 +256,18 @@ export class RoomStore {
     }
 
     // Keep invite-open workspaces alive across brief host/guest disconnects.
-    // Otherwise a socket reconnect wipes the room before authorization.
+    // Locked sessions get a grace window so refresh / dual-blip does not wipe history.
     const bothGone =
       !room.hostSocketId && !room.guestSocketId && !room.pendingRequest;
     const keepForInvite = room.inviteStatus === 'active';
-    if (bothGone && !keepForInvite) {
+    if (bothGone && keepForInvite) {
+      return { room, role: binding.role, destroyed: false };
+    }
+    if (bothGone && room.locked) {
+      this.scheduleOrphanCleanup(room.roomId);
+      return { room, role: binding.role, destroyed: false };
+    }
+    if (bothGone) {
       this.destroyRoom(room.roomId);
       return { room, role: binding.role, destroyed: true };
     }
@@ -261,7 +275,27 @@ export class RoomStore {
     return { room, role: binding.role, destroyed: false };
   }
 
+  private scheduleOrphanCleanup(roomId: string): void {
+    this.cancelOrphanCleanup(roomId);
+    const timer = setTimeout(() => {
+      this.orphanTimers.delete(roomId);
+      const room = this.rooms.get(roomId);
+      if (!room) return;
+      if (room.hostSocketId || room.guestSocketId || room.pendingRequest) return;
+      this.destroyRoom(roomId);
+    }, LOCKED_ROOM_GRACE_MS);
+    this.orphanTimers.set(roomId, timer);
+  }
+
+  private cancelOrphanCleanup(roomId: string): void {
+    const timer = this.orphanTimers.get(roomId);
+    if (!timer) return;
+    clearTimeout(timer);
+    this.orphanTimers.delete(roomId);
+  }
+
   destroyRoom(roomId: string): void {
+    this.cancelOrphanCleanup(roomId);
     const room = this.rooms.get(roomId);
     if (!room) return;
 

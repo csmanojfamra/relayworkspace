@@ -119,7 +119,7 @@ export function CommandInput({ onSend, onTyping, disabled }: CommandInputProps) 
 
         {disabled && (
           <p className="mt-2 text-[10px] tracking-wide text-[var(--text-faint)]">
-            Remote endpoint offline — prompt locked
+            Connection offline — prompt locked until tunnel restores
           </p>
         )}
       </motion.form>

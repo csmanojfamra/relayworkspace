@@ -60,6 +60,11 @@ export function registerSocketHandlers(io: Server): void {
         payload: { roomId: string; sessionKey: string },
         ack?: (result: JoinResult | ErrorPayload) => void
       ) => {
+        const roomBefore = roomStore.getRoom(payload.roomId);
+        const undeliveredIds = new Set(
+          roomBefore?.messages.filter((m) => !m.delivered).map((m) => m.id) ?? []
+        );
+
         const rejoined = roomStore.rejoin(payload.roomId, payload.sessionKey, socket.id);
         if (!rejoined) {
           // Stale browser session after restart / room purge — ack only, no hard error.
@@ -80,6 +85,14 @@ export function registerSocketHandlers(io: Server): void {
             connected: true,
             role,
           });
+        }
+
+        // Sync delivery flags for entries written while this endpoint was offline.
+        if (undeliveredIds.size > 0) {
+          for (const message of room.messages) {
+            if (!undeliveredIds.has(message.id)) continue;
+            io.to(room.roomId).emit(SocketEvents.MESSAGE_UPDATED, { ...message });
+          }
         }
 
         const result: JoinResult = {

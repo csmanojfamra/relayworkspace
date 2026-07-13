@@ -168,10 +168,24 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         { roomId: activeRoom, sessionKey: activeKey },
         (result: JoinResult | ErrorPayload) => {
           if ('code' in result) {
-            // Stale session after server restart / both endpoints left.
+            // Stale session after server restart / grace expiry / both left too long.
             sessionKeyRef.current = null;
             roomIdRef.current = null;
             savePersistedSession(null);
+            if (
+              phaseRef.current === 'chat' ||
+              phaseRef.current === 'booting' ||
+              phaseRef.current === 'host-ready'
+            ) {
+              setError({
+                code: 'ROOM_NOT_FOUND',
+                message: 'Session ended. The workspace is no longer available.',
+              });
+              setPhase('error');
+              setPeerConnected(false);
+              setJoinRequest(null);
+              return;
+            }
             if (phaseRef.current === 'landing' || phaseRef.current === 'error') {
               setError(null);
               setPhase('landing');

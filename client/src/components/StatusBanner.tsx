@@ -8,15 +8,14 @@ export function StatusBanner() {
   let tone: 'warn' | 'info' = 'warn';
 
   if (!connected) {
-    message = '⚠ Connection interrupted — restoring tunnel…';
+    message = '⚠ Connection interrupted — restoring session…';
     tone = 'warn';
-  } else if (joinRequest) {
+  } else if (joinRequest && phase === 'host-ready') {
     message = '> Incoming endpoint awaiting authorization';
     tone = 'info';
   } else if (phase === 'chat' && !peerConnected) {
-    // Only after a paired session — not while still waiting for the first join.
-    message = '⚠ Remote endpoint disconnected';
-    tone = 'warn';
+    message = '> Remote endpoint offline — entries will sync when they return';
+    tone = 'info';
   }
 
   return (
