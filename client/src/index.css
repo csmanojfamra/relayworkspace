@@ -107,8 +107,7 @@ a {
     radial-gradient(1100px 520px at 12% -8%, var(--glow), transparent 58%),
     radial-gradient(800px 420px at 100% 0%, rgba(255, 255, 255, 0.025), transparent 42%),
     var(--bg);
-  padding-bottom: var(--keyboard-offset);
-  transition: padding-bottom 180ms ease-out, height 180ms ease-out;
+  transition: height 120ms ease-out;
 }
 
 .glass {
@@ -124,9 +123,16 @@ a {
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
-  scroll-behavior: smooth;
+  scroll-behavior: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar) transparent;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .scroll-y,
+  .terminal-scroll {
+    scroll-behavior: smooth;
+  }
 }
 
 .scroll-y::-webkit-scrollbar,

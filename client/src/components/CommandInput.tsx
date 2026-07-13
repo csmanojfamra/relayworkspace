@@ -14,7 +14,7 @@ interface CommandInputProps {
   disabled?: boolean;
 }
 
-/** Single-line Warp-style prompt — last line of the terminal stream. */
+/** Warp-style prompt — compact on mobile so the keyboard leaves room to chat. */
 export function CommandInput({ onSend, onTyping, disabled }: CommandInputProps) {
   const [value, setValue] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -22,22 +22,22 @@ export function CommandInput({ onSend, onTyping, disabled }: CommandInputProps) 
   const stopTimer = useRef<number | null>(null);
   const isMobile = useIsMobile();
   const isCoarsePointer = useMediaQuery('(pointer: coarse)');
-  // Phones, tablets, and touch devices — do not rely on Tailwind sm:hidden (640px).
   const showExecute = isMobile || isCoarsePointer;
   const canExecute = Boolean(value.trim()) && !disabled;
 
   useEffect(() => {
-    if (disabled) return;
+    // Don't auto-focus on phones — opens the keyboard and steals half the screen.
+    if (disabled || isMobile || isCoarsePointer) return;
     const id = window.setTimeout(() => textareaRef.current?.focus(), 60);
     return () => window.clearTimeout(id);
-  }, [disabled]);
+  }, [disabled, isMobile, isCoarsePointer]);
 
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = '0px';
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
-  }, [value]);
+    el.style.height = `${Math.min(el.scrollHeight, isMobile ? 120 : 160)}px`;
+  }, [value, isMobile]);
 
   const emitTyping = (next: boolean) => {
     if (typingRef.current === next) return;
@@ -62,7 +62,9 @@ export function CommandInput({ onSend, onTyping, disabled }: CommandInputProps) 
     onSend(trimmed);
     setValue('');
     emitTyping(false);
-    requestAnimationFrame(() => textareaRef.current?.focus());
+    if (!isMobile) {
+      requestAnimationFrame(() => textareaRef.current?.focus());
+    }
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -91,15 +93,10 @@ export function CommandInput({ onSend, onTyping, disabled }: CommandInputProps) 
         textareaRef.current?.focus();
       }}
     >
-      <div className="flex flex-col gap-2.5 md:flex-row md:items-start md:gap-2">
-        <p className="shrink-0 select-none font-mono text-[12px] leading-7 tracking-tight md:pt-[2px]">
-          <span style={{ color: 'var(--me)' }}>relay@local</span>
-          <span className="text-[var(--text-faint)]">:~/workspace</span>
-          <span className="ml-1.5 text-[var(--accent)]">❯</span>
-        </p>
-
-        <div className="flex min-w-0 flex-1 items-end gap-2.5">
-          <div className="relative min-w-0 flex-1">
+      {isMobile ? (
+        <div className="flex items-end gap-2">
+          <span className="mb-2 shrink-0 select-none text-[14px] text-[var(--accent)]">❯</span>
+          <div className="relative min-w-0 flex-1 rounded-xl border border-[var(--border)] bg-[var(--bg-soft)] px-3 py-2.5">
             <textarea
               ref={textareaRef}
               value={value}
@@ -108,49 +105,100 @@ export function CommandInput({ onSend, onTyping, disabled }: CommandInputProps) 
               onKeyDown={onKeyDown}
               rows={1}
               spellCheck={false}
-              autoCapitalize="off"
-              autoCorrect="off"
+              autoCapitalize="sentences"
+              autoCorrect="on"
               autoComplete="off"
-              enterKeyHint="done"
+              enterKeyHint="send"
+              placeholder="Write an entry…"
               aria-label="Terminal prompt"
-              className="max-h-[160px] min-h-[36px] w-full resize-none overflow-y-auto bg-transparent p-0 font-mono text-[13px] leading-7 text-[var(--text)] outline-none sm:text-sm"
+              className="max-h-[120px] min-h-[24px] w-full resize-none overflow-y-auto bg-transparent p-0 font-mono text-[15px] leading-6 text-[var(--text)] outline-none placeholder:text-[var(--text-faint)]"
               style={{
                 fontFamily: 'inherit',
-                caretColor: value || disabled ? 'var(--cursor)' : 'transparent',
+                caretColor: 'var(--cursor)',
               }}
             />
-            {!value && !disabled && (
-              <span
-                className="blink pointer-events-none absolute left-0 top-[10px] inline-block h-[15px] w-[7px] bg-[var(--cursor)]"
-                aria-hidden
+          </div>
+          <motion.button
+            type="button"
+            disabled={!canExecute}
+            whileTap={canExecute ? { scale: 0.96 } : undefined}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              submit();
+            }}
+            aria-label="Execute entry"
+            className={`mb-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border font-mono text-[16px] transition-colors ${
+              canExecute
+                ? 'border-[color-mix(in_srgb,var(--accent)_45%,var(--border))] bg-[color-mix(in_srgb,var(--accent)_16%,var(--bg-soft))] text-[var(--accent)]'
+                : 'border-[var(--border)] bg-[var(--bg-soft)] text-[var(--text-faint)]'
+            }`}
+          >
+            ↵
+          </motion.button>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2.5 md:flex-row md:items-start md:gap-2">
+          <p className="shrink-0 select-none font-mono text-[12px] leading-7 tracking-tight md:pt-[2px]">
+            <span style={{ color: 'var(--me)' }}>relay@local</span>
+            <span className="text-[var(--text-faint)]">:~/workspace</span>
+            <span className="ml-1.5 text-[var(--accent)]">❯</span>
+          </p>
+
+          <div className="flex min-w-0 flex-1 items-end gap-2.5">
+            <div className="relative min-w-0 flex-1">
+              <textarea
+                ref={textareaRef}
+                value={value}
+                disabled={disabled}
+                onChange={(e) => handleChange(e.target.value)}
+                onKeyDown={onKeyDown}
+                rows={1}
+                spellCheck={false}
+                autoCapitalize="off"
+                autoCorrect="off"
+                autoComplete="off"
+                enterKeyHint="done"
+                aria-label="Terminal prompt"
+                className="max-h-[160px] min-h-[36px] w-full resize-none overflow-y-auto bg-transparent p-0 font-mono text-[13px] leading-7 text-[var(--text)] outline-none sm:text-sm"
+                style={{
+                  fontFamily: 'inherit',
+                  caretColor: value || disabled ? 'var(--cursor)' : 'transparent',
+                }}
               />
+              {!value && !disabled && (
+                <span
+                  className="blink pointer-events-none absolute left-0 top-[10px] inline-block h-[15px] w-[7px] bg-[var(--cursor)]"
+                  aria-hidden
+                />
+              )}
+            </div>
+
+            {showExecute && (
+              <motion.button
+                type="button"
+                disabled={!canExecute}
+                whileTap={canExecute ? { scale: 0.96 } : undefined}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  submit();
+                }}
+                aria-label="Execute entry"
+                title="Execute"
+                className={`flex h-10 shrink-0 items-center gap-1.5 rounded-lg border px-3 font-mono text-[12px] tracking-wide transition-colors duration-150 ${
+                  canExecute
+                    ? 'border-[color-mix(in_srgb,var(--accent)_45%,var(--border))] bg-[color-mix(in_srgb,var(--accent)_14%,var(--bg-soft))] text-[var(--accent)]'
+                    : 'border-[var(--border)] bg-[var(--bg-soft)] text-[var(--text-faint)]'
+                }`}
+              >
+                <span className="text-[14px] leading-none">↵</span>
+                <span>exec</span>
+              </motion.button>
             )}
           </div>
-
-          {showExecute && (
-            <motion.button
-              type="button"
-              disabled={!canExecute}
-              whileTap={canExecute ? { scale: 0.96 } : undefined}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                submit();
-              }}
-              aria-label="Execute entry"
-              title="Execute"
-              className={`flex h-10 shrink-0 items-center gap-1.5 rounded-lg border px-3 font-mono text-[12px] tracking-wide transition-colors duration-150 ${
-                canExecute
-                  ? 'border-[color-mix(in_srgb,var(--accent)_45%,var(--border))] bg-[color-mix(in_srgb,var(--accent)_14%,var(--bg-soft))] text-[var(--accent)]'
-                  : 'border-[var(--border)] bg-[var(--bg-soft)] text-[var(--text-faint)]'
-              }`}
-            >
-              <span className="text-[14px] leading-none">↵</span>
-              <span>exec</span>
-            </motion.button>
-          )}
         </div>
-      </div>
+      )}
 
       {disabled && (
         <p className="mt-2 font-mono text-[10px] tracking-wide text-[var(--text-faint)]">

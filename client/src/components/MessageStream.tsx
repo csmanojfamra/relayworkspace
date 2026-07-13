@@ -1,9 +1,10 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MESSAGE_TTL_MS, type ChatMessage, type UserRole } from '@terminalchat/shared';
-import { formatUtcTime, promptLabel } from '@/lib/utils';
+import { formatCompactTime, formatUtcTime, promptLabel, shortPromptLabel } from '@/lib/utils';
 import { useTerminalTimeline } from '@/hooks/useTerminalTimeline';
 import { useCountdown } from '@/hooks/useCountdown';
+import { useIsMobile } from '@/hooks/useMediaQuery';
 import {
   PreparingOutput,
   SystemEventLine,
@@ -52,6 +53,7 @@ export function MessageStream({
   const stickToBottom = useRef(true);
   const stageTimers = useRef(new Map<string, number>());
   const [revealedIds, setRevealedIds] = useState(() => new Set<string>());
+  const isMobile = useIsMobile();
 
   const { events, typingLine, ambient } = useTerminalTimeline({
     peerConnected,
@@ -139,8 +141,9 @@ export function MessageStream({
       <div
         ref={scrollRef}
         onScroll={onScroll}
-        className="scroll-y terminal-scroll min-h-0 flex-1 px-5 py-4 sm:px-10 sm:py-5"
+        className="scroll-y terminal-scroll min-h-0 flex-1 px-3 py-3 sm:px-10 sm:py-5"
         onMouseDown={(e) => {
+          if (isMobile) return;
           const target = e.target as HTMLElement;
           if (target.closest('textarea, button, a, input')) return;
           const prompt = document.querySelector('.terminal-prompt textarea');
@@ -151,12 +154,12 @@ export function MessageStream({
         }}
       >
         <div className="mx-auto w-full max-w-[980px]">
-          {displayItems.length === 0 && !typingLine && !ambient && (
-            <p className="mb-4 font-mono text-[11px] tracking-wide text-[var(--text-faint)] opacity-65">
+          {displayItems.length === 0 && !typingLine && !(ambient && !isMobile) && (
+            <p className="mb-3 font-mono text-[11px] tracking-wide text-[var(--text-faint)] opacity-65">
               {peerConnected
                 ? 'Awaiting endpoint activity.'
                 : connected
-                  ? 'Remote endpoint offline — local prompt remains available.'
+                  ? 'Remote offline — you can still write.'
                   : 'Waiting for connection…'}
             </p>
           )}
@@ -175,6 +178,7 @@ export function MessageStream({
                     key={item.key}
                     message={item.message}
                     mine={item.mine}
+                    compact={isMobile}
                   />
                 );
               })}
@@ -182,20 +186,20 @@ export function MessageStream({
 
             {typingLine && !stagingRemote && <TypingEvent line={typingLine} />}
 
-            {ambient && !typingLine && (
+            {!isMobile && ambient && !typingLine && (
               <SystemEventLine key={ambient.id} event={ambient} compact />
             )}
 
             {peerConnected === false && connected && displayItems.length > 0 && (
               <p className="py-2 font-mono text-[10px] tracking-wide text-[var(--text-faint)] opacity-50">
-                Remote offline — entries sync when the endpoint returns.
+                Remote offline — entries sync when they return.
               </p>
             )}
           </div>
         </div>
       </div>
 
-      <div className="shrink-0 border-t border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_92%,transparent)] px-5 py-3 pb-[max(12px,var(--safe-bottom))] backdrop-blur-md sm:px-10">
+      <div className="shrink-0 border-t border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_94%,transparent)] px-3 py-2.5 pb-[max(10px,var(--safe-bottom))] backdrop-blur-md sm:px-10 sm:py-3">
         <div className="mx-auto w-full max-w-[980px]">
           <CommandInput
             onSend={(value) => {
@@ -214,13 +218,18 @@ export function MessageStream({
 function TerminalEntry({
   message,
   mine,
+  compact = false,
 }: {
   message: ChatMessage;
   mine: boolean;
+  compact?: boolean;
 }) {
   const remaining = useCountdown(message.deleteAt);
   const bothSeen = message.seenByHost && message.seenByGuest;
-  const endpoint = promptLabel(mine ? 'me' : 'friend');
+  const endpoint = compact
+    ? shortPromptLabel(mine ? 'me' : 'friend')
+    : promptLabel(mine ? 'me' : 'friend');
+  const stamp = compact ? formatCompactTime(message.timestamp) : formatUtcTime(message.timestamp);
   const hasTtl = Boolean(message.deleteAt && remaining);
 
   const ttlProgress =
@@ -238,36 +247,40 @@ function TerminalEntry({
         overflow: 'hidden',
         transition: { duration: 0.28, ease: [0.22, 1, 0.36, 1] },
       }}
-      transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-      className="font-mono py-3.5"
+      transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+      className={`font-mono ${compact ? 'py-2.5' : 'py-3.5'}`}
     >
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+      <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
         <p
-          className="font-mono text-[10px] font-medium uppercase tracking-[0.14em]"
+          className="font-mono text-[10px] font-medium uppercase tracking-[0.12em]"
           style={{ color: mine ? 'var(--me)' : 'var(--peer)' }}
         >
           {endpoint}
         </p>
         <p className="font-mono text-[10px] tabular-nums tracking-wide text-[var(--text-faint)] opacity-45">
-          {formatUtcTime(message.timestamp)}
+          {stamp}
         </p>
       </div>
 
-      <p className="mt-1.5 whitespace-pre-wrap break-words font-mono text-[14px] leading-6 text-[var(--text)] sm:text-[15px]">
+      <p
+        className={`mt-1 whitespace-pre-wrap break-words font-mono leading-6 text-[var(--text)] ${
+          compact ? 'text-[15px]' : 'text-[14px] sm:text-[15px]'
+        }`}
+      >
         {message.content}
       </p>
 
       {(hasTtl || bothSeen || message.delivered) && (
-        <div className="mt-1.5 flex items-center gap-2 opacity-35">
+        <div className="mt-1 flex items-center gap-2 opacity-30">
           <p className="font-mono text-[9px] tracking-wide text-[var(--text-faint)]">
             {hasTtl && remaining ? (
               <>
-                Memory TTL <span className="tabular-nums">{remaining}</span>
+                TTL <span className="tabular-nums">{remaining}</span>
               </>
             ) : bothSeen ? (
-              'Memory TTL armed'
+              'TTL armed'
             ) : (
-              'Memory sync pending'
+              'sync pending'
             )}
           </p>
           {ttlProgress != null && (
@@ -287,8 +300,7 @@ function TerminalEntry({
   );
 }
 
-function buildStream(
-  messages: ChatMessage[],
+function buildStream(  messages: ChatMessage[],
   events: ReturnType<typeof useTerminalTimeline>['events'],
   role: UserRole | null,
   revealedIds: Set<string>

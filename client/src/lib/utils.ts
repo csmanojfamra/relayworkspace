@@ -54,6 +54,16 @@ export function formatUtcTime(ts: number): string {
   return `${parts} UTC`;
 }
 
+/** Compact clock for narrow screens — local time, no timezone suffix. */
+export function formatCompactTime(ts: number): string {
+  return new Intl.DateTimeFormat(undefined, {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(new Date(ts));
+}
+
 export function formatDateTime(ts: number): string {
   return new Intl.DateTimeFormat(undefined, {
     month: 'short',
@@ -67,4 +77,9 @@ export function formatDateTime(ts: number): string {
 export function promptLabel(role: 'host' | 'guest' | 'me' | 'friend'): string {
   if (role === 'me' || role === 'host') return 'LOCAL ENDPOINT';
   return 'REMOTE ENDPOINT';
+}
+
+export function shortPromptLabel(role: 'host' | 'guest' | 'me' | 'friend'): string {
+  if (role === 'me' || role === 'host') return 'LOCAL';
+  return 'REMOTE';
 }

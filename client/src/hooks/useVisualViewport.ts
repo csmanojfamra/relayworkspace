@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
 
 /**
- * Keeps the app shell aligned with the visual viewport so the command bar
- * stays above the on-screen keyboard on iOS/Android.
+ * Align the app shell with the visual viewport on mobile.
+ * Use vv.height only — do NOT also pad for keyboard (that double-shrinks the UI).
  */
 export function useVisualViewport(): void {
   useEffect(() => {
@@ -15,9 +15,9 @@ export function useVisualViewport(): void {
     const sync = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
-        const offset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-        root.style.setProperty('--keyboard-offset', `${offset}px`);
-        root.style.setProperty('--vv-height', `${vv.height}px`);
+        // Height already tracks the visible area above the keyboard.
+        root.style.setProperty('--vv-height', `${Math.round(vv.height)}px`);
+        root.style.setProperty('--keyboard-offset', '0px');
       });
     };
 

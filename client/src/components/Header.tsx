@@ -2,6 +2,7 @@ import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import { useSession } from '@/hooks/useSession';
 import { useElapsed } from '@/hooks/useUtilities';
+import { useIsMobile } from '@/hooks/useMediaQuery';
 import { sessionStatus, syncStatus } from '@/lib/terminalEvents';
 
 interface HeaderProps {
@@ -12,7 +13,8 @@ interface HeaderProps {
 export function Header({ onOpenSidebar, showMenu }: HeaderProps) {
   const { peerConnected, connected, sessionStartedAt, latency, messages } = useSession();
   const elapsed = useElapsed(sessionStartedAt);
-  const liveLatency = useLiveLatency(latency, connected);
+  const isMobile = useIsMobile();
+  const liveLatency = connected ? latency : null;
   const memoryMb = useLiveMemory(connected, messages.length, sessionStartedAt);
 
   const secure = connected && peerConnected;
@@ -26,16 +28,16 @@ export function Header({ onOpenSidebar, showMenu }: HeaderProps) {
   const sync = syncStatus(liveLatency, connected, peerConnected);
 
   return (
-    <header className="status-bar shrink-0 border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--bg-elevated)_90%,transparent)] backdrop-blur-2xl">
-      <div className="flex items-center justify-between gap-3 px-4 py-2.5 sm:px-6">
-        <div className="flex min-w-0 items-center gap-2.5">
+    <header className="status-bar shrink-0 border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--bg-elevated)_92%,transparent)] backdrop-blur-2xl">
+      <div className="flex items-center justify-between gap-2 px-3 py-2 sm:gap-3 sm:px-6 sm:py-2.5">
+        <div className="flex min-w-0 items-center gap-2">
           {showMenu && (
             <motion.button
               type="button"
               whileTap={{ scale: 0.94 }}
               aria-label="Open workspace"
               onClick={onOpenSidebar}
-              className="flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--bg-soft)] text-[var(--text-muted)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--text)]"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--bg-soft)] text-[var(--text-muted)]"
             >
               <span className="text-base leading-none">☰</span>
             </motion.button>
@@ -45,7 +47,7 @@ export function Header({ onOpenSidebar, showMenu }: HeaderProps) {
             <div className="flex items-center gap-2">
               <h1 className="truncate text-[13px] font-semibold tracking-tight">Relay</h1>
               <span
-                className={`inline-block h-2 w-2 rounded-full transition-colors duration-300 ${
+                className={`inline-block h-1.5 w-1.5 rounded-full ${
                   secure
                     ? 'bg-[var(--accent)]'
                     : connected
@@ -54,48 +56,38 @@ export function Header({ onOpenSidebar, showMenu }: HeaderProps) {
                 }`}
               />
             </div>
-            <p className="truncate text-[11px] text-[var(--text-muted)]">
-              {secure ? '✓ Secure tunnel active' : sessionLabel}
+            <p className="truncate text-[10px] text-[var(--text-muted)] sm:text-[11px]">
+              {secure ? 'Secure tunnel' : sessionLabel}
             </p>
           </div>
         </div>
 
-        <div className="flex shrink-0 items-stretch gap-2.5 sm:gap-4">
-          <Stat label="Session" value={session} className="hidden sm:flex" />
-          <Stat
-            label="Latency"
-            value={liveLatency != null ? `${liveLatency} ms` : '—'}
-            className="hidden md:flex"
-          />
-          <Stat label="Sync" value={sync} className="hidden lg:flex" />
-          <Stat label="Uptime" value={elapsed} className="hidden xl:flex" />
-          <Stat
-            label="Remote"
-            value={peerConnected ? 'Connected' : 'Offline'}
-          />
-          <Stat
-            label="Memory"
-            value={connected ? `${memoryMb} MB` : '—'}
-            className="hidden 2xl:flex"
-          />
-        </div>
-      </div>
-
-      <div className="flex gap-3 overflow-x-auto border-t border-[var(--border)] px-4 py-1.5 no-scrollbar sm:hidden">
-        <MiniStat label="Session" value={session} />
-        <MiniStat label="RTT" value={liveLatency != null ? `${liveLatency} ms` : '—'} />
-        <MiniStat label="Sync" value={sync} />
-        <MiniStat label="Mem" value={connected ? `${memoryMb} MB` : '—'} />
-        <MiniStat label="Up" value={elapsed} />
+        {isMobile ? (
+          <div className="flex shrink-0 items-center gap-2 font-mono text-[10px] tabular-nums text-[var(--text-muted)]">
+            <span>{peerConnected ? 'Remote · on' : 'Remote · off'}</span>
+            {liveLatency != null && <span className="text-[var(--text-faint)]">{liveLatency}ms</span>}
+          </div>
+        ) : (
+          <div className="flex shrink-0 items-stretch gap-2.5 sm:gap-4">
+            <Stat label="Session" value={session} className="hidden sm:flex" />
+            <Stat
+              label="Latency"
+              value={liveLatency != null ? `${liveLatency} ms` : '—'}
+              className="hidden md:flex"
+            />
+            <Stat label="Sync" value={sync} className="hidden lg:flex" />
+            <Stat label="Uptime" value={elapsed} className="hidden xl:flex" />
+            <Stat label="Remote" value={peerConnected ? 'Connected' : 'Offline'} />
+            <Stat
+              label="Memory"
+              value={connected ? `${memoryMb} MB` : '—'}
+              className="hidden 2xl:flex"
+            />
+          </div>
+        )}
       </div>
     </header>
   );
-}
-
-function useLiveLatency(base: number | null, connected: boolean): number | null {
-  // Show real RTT only — no jitter remount flicker in the status bar.
-  if (!connected) return null;
-  return base;
 }
 
 function useLiveMemory(
@@ -134,15 +126,6 @@ function Stat({
     <div className={`min-w-0 flex-col justify-center text-right ${className || 'flex'}`}>
       <p className="text-[9px] uppercase tracking-[0.16em] text-[var(--text-faint)]">{label}</p>
       <p className="truncate font-mono text-[11px] tabular-nums text-[var(--text)]">{value}</p>
-    </div>
-  );
-}
-
-function MiniStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--bg)] px-2 py-1">
-      <span className="text-[9px] uppercase tracking-[0.14em] text-[var(--text-faint)]">{label}</span>
-      <span className="font-mono text-[10px] tabular-nums text-[var(--text-muted)]">{value}</span>
     </div>
   );
 }
