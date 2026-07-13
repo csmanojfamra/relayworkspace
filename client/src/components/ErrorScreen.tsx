@@ -3,7 +3,9 @@ import { Button } from '@/components/ui/Button';
 import { useSession } from '@/hooks/useSession';
 
 export function ErrorScreen() {
-  const { error, reset } = useSession();
+  const { error, reset, roomId, inviteToken, beginJoin, reconnect } = useSession();
+
+  const canRetryJoin = Boolean(roomId && inviteToken && error?.code === 'SERVER_ERROR');
 
   return (
     <div className="app-shell safe-pad flex items-center justify-center px-6">
@@ -22,9 +24,22 @@ export function ErrorScreen() {
         {error?.code && (
           <p className="mt-2 font-mono text-xs text-[var(--text-muted)]">⚠ {error.code}</p>
         )}
-        <Button className="mt-6" onClick={reset}>
-          Return Home
-        </Button>
+        <div className="mt-6 flex flex-col items-center gap-3">
+          {canRetryJoin && (
+            <Button
+              className="min-w-[200px]"
+              onClick={() => {
+                reconnect();
+                beginJoin(roomId!, inviteToken!);
+              }}
+            >
+              Retry connection
+            </Button>
+          )}
+          <Button variant={canRetryJoin ? 'ghost' : 'primary'} onClick={reset}>
+            Return Home
+          </Button>
+        </div>
       </motion.div>
     </div>
   );

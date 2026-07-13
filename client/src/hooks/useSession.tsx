@@ -143,16 +143,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
     const socket = io(url || undefined, {
       autoConnect: Boolean(url),
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'],
       reconnection: Boolean(url),
       reconnectionAttempts: Infinity,
       reconnectionDelay: 800,
-      reconnectionDelayMax: 4000,
-      timeout: 8000,
+      reconnectionDelayMax: 5000,
+      timeout: 20000,
     });
 
     if (url) setConnectionStatus('connecting');
 
+    let connectFailures = 0;
     const attemptRejoin = () => {
       const persisted = loadPersistedSession();
       const activeRoom = roomIdRef.current ?? persisted?.roomId;
@@ -242,6 +243,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     };
 
     socket.on('connect', () => {
+      connectFailures = 0;
       setConnected(true);
       setConnectionStatus('connected');
       setError((prev) => (prev?.code === 'SERVER_ERROR' ? null : prev));
@@ -255,8 +257,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     });
 
     socket.on('connect_error', () => {
+      connectFailures += 1;
       setConnected(false);
-      setConnectionStatus('unavailable');
+      // Mobile networks often fail the first attempt; stay "connecting" briefly.
+      setConnectionStatus(connectFailures >= 4 ? 'unavailable' : 'connecting');
     });
     socket.on(SocketEvents.ROOM_STATE, (state: RoomPublicState) => {
       setRoomState(state);
@@ -436,8 +440,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setBootCompleteState(false);
 
       let settled = false;
+
       const emitJoin = () => {
         const active = socketRef.current ?? socket;
+        if (!active.connected) return;
         active.emit(
           SocketEvents.JOIN_ROOM,
           { roomId: targetRoomId, token },
@@ -455,24 +461,34 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         );
       };
 
-      // Wait for socket connect so the join is not lost on a cold start.
+      const onConnect = () => {
+        if (settled) return;
+        if (phaseRef.current !== 'joining') return;
+        emitJoin();
+      };
+
+      // Keep retrying join across reconnects — mobile links are often slow.
+      socket.on('connect', onConnect);
       if (socket.connected) {
         emitJoin();
-      } else {
-        socket.once('connect', emitJoin);
-        if (!socket.active) socket.connect();
+      } else if (!socket.active) {
+        socket.connect();
       }
 
       // Surface a real error if the API never answers (wrong VITE_SOCKET_URL, etc).
       window.setTimeout(() => {
+        socket.off('connect', onConnect);
         if (settled) return;
         if (phaseRef.current !== 'joining') return;
+        const live = socketRef.current?.connected ?? socket.connected;
         setError({
           code: 'SERVER_ERROR',
-          message: 'Could not reach Relay. Check connection and try again.',
+          message: live
+            ? 'Relay did not respond in time. Try again.'
+            : 'Could not reach Relay. Check connection and try again.',
         });
         setPhase('error');
-      }, 12000);
+      }, 28000);
     },
     [ensureSocket]
   );
