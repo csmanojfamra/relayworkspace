@@ -59,6 +59,7 @@ export class RoomStore {
     this.tokenIndex.set(inviteToken, roomId);
     this.socketIndex.set(hostSocketId, { roomId, role: 'host' });
     this.cancelOrphanCleanup(roomId);
+    this.touch(room);
     return room;
   }
 
@@ -89,6 +90,7 @@ export class RoomStore {
       roomId: room.roomId,
       role: 'guest',
     });
+    this.touch(room);
   }
 
   clearPendingRequest(room: Room): void {
@@ -100,6 +102,7 @@ export class RoomStore {
       }
     }
     room.pendingRequest = null;
+    this.touch(room);
   }
 
   acceptGuest(room: Room, guestSocketId: string, guestSessionKey: string): void {
@@ -119,6 +122,7 @@ export class RoomStore {
     for (const message of room.messages) {
       if (!message.delivered) message.delivered = true;
     }
+    this.touch(room);
   }
 
   rejoin(
@@ -139,6 +143,7 @@ export class RoomStore {
       for (const message of room.messages) {
         if (!message.delivered) message.delivered = true;
       }
+      this.touch(room);
       return { room, role: 'host' };
     }
 
@@ -152,6 +157,7 @@ export class RoomStore {
       for (const message of room.messages) {
         if (!message.delivered) message.delivered = true;
       }
+      this.touch(room);
       return { room, role: 'guest' };
     }
 
@@ -167,6 +173,7 @@ export class RoomStore {
     if (room.messages.length > 500) {
       room.messages = room.messages.slice(-500);
     }
+    this.touch(room);
   }
 
   removeMessage(roomId: string, messageId: string): boolean {
@@ -174,12 +181,17 @@ export class RoomStore {
     if (!room) return false;
     const before = room.messages.length;
     room.messages = room.messages.filter((m) => m.id !== messageId);
-    return room.messages.length < before;
+    if (room.messages.length < before) {
+      this.touch(room);
+      return true;
+    }
+    return false;
   }
 
   clearMessages(room: Room): number {
     const count = room.messages.length;
     room.messages = [];
+    this.touch(room);
     return count;
   }
 
@@ -215,6 +227,7 @@ export class RoomStore {
       if (changed) updated.push({ ...message });
     }
 
+    if (updated.length) this.touch(room);
     return updated;
   }
 
@@ -267,10 +280,12 @@ export class RoomStore {
       !room.hostSocketId && !room.guestSocketId && !room.pendingRequest;
     const keepForInvite = room.inviteStatus === 'active';
     if (bothGone && keepForInvite) {
+      this.touch(room);
       return { room, role: binding.role, destroyed: false };
     }
     if (bothGone && room.locked) {
       this.scheduleOrphanCleanup(room.roomId);
+      this.touch(room);
       return { room, role: binding.role, destroyed: false };
     }
     if (bothGone) {
@@ -278,6 +293,7 @@ export class RoomStore {
       return { room, role: binding.role, destroyed: true };
     }
 
+    this.touch(room);
     return { room, role: binding.role, destroyed: false };
   }
 
@@ -311,9 +327,84 @@ export class RoomStore {
 
     if (room.hostSocketId) this.socketIndex.delete(room.hostSocketId);
     if (room.guestSocketId) this.socketIndex.delete(room.guestSocketId);
+    if (room.pendingRequest) {
+      this.socketIndex.delete(room.pendingRequest.guestSocketId);
+    }
 
     room.messages = [];
     this.rooms.delete(roomId);
+    this.queueDelete(roomId);
+  }
+
+  /** Restore durable room seats after process restart (sockets stay disconnected). */
+  hydrate(snapshots: Array<{
+    roomId: string;
+    hostSessionKey: string | null;
+    guestSessionKey: string | null;
+    inviteToken: string | null;
+    inviteStatus: InviteStatus;
+    locked: boolean;
+    messages: ChatMessage[];
+    createdAt: number;
+  }>): number {
+    let loaded = 0;
+    for (const snap of snapshots) {
+      if (this.rooms.has(snap.roomId)) continue;
+      const room: Room = {
+        roomId: snap.roomId,
+        hostSocketId: null,
+        guestSocketId: null,
+        hostSessionKey: snap.hostSessionKey,
+        guestSessionKey: snap.guestSessionKey,
+        inviteToken: snap.inviteToken,
+        inviteStatus: snap.inviteStatus,
+        locked: snap.locked,
+        messages: snap.messages ?? [],
+        createdAt: snap.createdAt,
+        pendingRequest: null,
+      };
+      this.rooms.set(room.roomId, room);
+      if (room.inviteToken) this.tokenIndex.set(room.inviteToken, room.roomId);
+      loaded += 1;
+    }
+    return loaded;
+  }
+
+  setPersistHandlers(handlers: {
+    upsert: (room: Room) => void;
+    remove: (roomId: string) => void;
+  }): void {
+    this.persistUpsert = handlers.upsert;
+    this.persistRemove = handlers.remove;
+  }
+
+  private persistUpsert: ((room: Room) => void) | null = null;
+  private persistRemove: ((roomId: string) => void) | null = null;
+  private persistTimers = new Map<string, NodeJS.Timeout>();
+
+  /** Call after durable room mutations (not every typing event). */
+  touch(room: Room): void {
+    this.queueUpsert(room);
+  }
+
+  private queueUpsert(room: Room): void {
+    if (!this.persistUpsert) return;
+    const existing = this.persistTimers.get(room.roomId);
+    if (existing) clearTimeout(existing);
+    const timer = setTimeout(() => {
+      this.persistTimers.delete(room.roomId);
+      this.persistUpsert?.(room);
+    }, 80);
+    this.persistTimers.set(room.roomId, timer);
+  }
+
+  private queueDelete(roomId: string): void {
+    const existing = this.persistTimers.get(roomId);
+    if (existing) {
+      clearTimeout(existing);
+      this.persistTimers.delete(roomId);
+    }
+    this.persistRemove?.(roomId);
   }
 
   getPeerSocketId(room: Room, role: UserRole): string | null {

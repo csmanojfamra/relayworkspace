@@ -20,7 +20,7 @@ terminalchat/
 
 ### Data model
 
-No database. The server stores rooms in JavaScript `Map` objects:
+No database required for local `npm run dev` (in-memory Maps). With Docker / `DATABASE_URL`, rooms + messages persist in Postgres across restarts; Redis powers multi-instance Socket.IO.
 
 | Key | Contents |
 |-----|----------|
@@ -50,6 +50,31 @@ When the process restarts, all sessions vanish. That is intentional.
 npm install
 ```
 
+## Docker (Postgres + Redis + Relay)
+
+One stack with durable rooms (Postgres), Socket.IO scale-out (Redis), and the web app served from the API container.
+
+```bash
+docker compose up --build
+```
+
+- App: http://localhost:3001  
+- Health: http://localhost:3001/health (`storage: "postgres+memory"`)  
+- Postgres: `localhost:5432` (user/pass/db: `relay`)  
+- Redis: `localhost:6379`
+
+GitHub Actions (`.github/workflows/ci.yml`) on every push to `main`:
+
+1. Typecheck + build  
+2. Build & push image to `ghcr.io/<owner>/relayworkspace`  
+3. Compose smoke test (build, boot, hit `/health`)
+
+Pull the published image:
+
+```bash
+docker pull ghcr.io/csmanojfamra/relayworkspace:latest
+```
+
 ## Development
 
 Run API and client together from the repo root:
@@ -69,7 +94,10 @@ npm run dev
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `3001` | HTTP / Socket.IO port |
-| `CLIENT_ORIGIN` | `http://localhost:5173` | Allowed CORS origin (your Netlify URL in production) |
+| `CLIENT_ORIGIN` | `http://localhost:5173` | Allowed CORS origin |
+| `DATABASE_URL` | _(unset)_ | Postgres URL — enables room persistence |
+| `REDIS_URL` | _(unset)_ | Redis URL — Socket.IO adapter |
+| `STATIC_DIR` | _(unset)_ | Path to built client (`client/dist` in Docker) |
 
 **Client** (`client/`)
 
