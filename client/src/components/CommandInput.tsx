@@ -6,6 +6,7 @@ import {
   type KeyboardEvent,
 } from 'react';
 import { motion } from 'framer-motion';
+import { useIsMobile, useMediaQuery } from '@/hooks/useMediaQuery';
 
 interface CommandInputProps {
   onSend: (value: string) => void;
@@ -19,6 +20,10 @@ export function CommandInput({ onSend, onTyping, disabled }: CommandInputProps) 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const typingRef = useRef(false);
   const stopTimer = useRef<number | null>(null);
+  const isMobile = useIsMobile();
+  const isCoarsePointer = useMediaQuery('(pointer: coarse)');
+  // Phones, tablets, and touch devices — do not rely on Tailwind sm:hidden (640px).
+  const showExecute = isMobile || isCoarsePointer;
   const canExecute = Boolean(value.trim()) && !disabled;
 
   useEffect(() => {
@@ -81,20 +86,19 @@ export function CommandInput({ onSend, onTyping, disabled }: CommandInputProps) 
       className="terminal-prompt font-mono pt-7"
       onMouseDown={(e) => {
         if (disabled) return;
-        // Keep focus on prompt unless tapping the control itself or the field.
         if ((e.target as HTMLElement).closest('textarea, button')) return;
         e.preventDefault();
         textareaRef.current?.focus();
       }}
     >
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-2">
-        <p className="shrink-0 select-none font-mono text-[12px] leading-7 tracking-tight sm:pt-[2px]">
+      <div className="flex flex-col gap-2.5 md:flex-row md:items-start md:gap-2">
+        <p className="shrink-0 select-none font-mono text-[12px] leading-7 tracking-tight md:pt-[2px]">
           <span style={{ color: 'var(--me)' }}>relay@local</span>
           <span className="text-[var(--text-faint)]">:~/workspace</span>
           <span className="ml-1.5 text-[var(--accent)]">❯</span>
         </p>
 
-        <div className="flex min-w-0 flex-1 items-start gap-2">
+        <div className="flex min-w-0 flex-1 items-end gap-2.5">
           <div className="relative min-w-0 flex-1">
             <textarea
               ref={textareaRef}
@@ -109,7 +113,7 @@ export function CommandInput({ onSend, onTyping, disabled }: CommandInputProps) 
               autoComplete="off"
               enterKeyHint="done"
               aria-label="Terminal prompt"
-              className="max-h-[160px] min-h-[28px] w-full resize-none overflow-y-auto bg-transparent p-0 font-mono text-[13px] leading-7 text-[var(--text)] outline-none sm:text-sm"
+              className="max-h-[160px] min-h-[36px] w-full resize-none overflow-y-auto bg-transparent p-0 font-mono text-[13px] leading-7 text-[var(--text)] outline-none sm:text-sm"
               style={{
                 fontFamily: 'inherit',
                 caretColor: value || disabled ? 'var(--cursor)' : 'transparent',
@@ -117,30 +121,34 @@ export function CommandInput({ onSend, onTyping, disabled }: CommandInputProps) 
             />
             {!value && !disabled && (
               <span
-                className="blink pointer-events-none absolute left-0 top-[6px] inline-block h-[15px] w-[7px] bg-[var(--cursor)]"
+                className="blink pointer-events-none absolute left-0 top-[10px] inline-block h-[15px] w-[7px] bg-[var(--cursor)]"
                 aria-hidden
               />
             )}
           </div>
 
-          {/*
-            Mobile execute control — shell return key, not a chat Send.
-            Hidden from sm+ where physical Enter is the natural path.
-          */}
-          <motion.button
-            type="submit"
-            disabled={!canExecute}
-            whileTap={canExecute ? { scale: 0.94 } : undefined}
-            aria-label="Execute entry"
-            title="Execute"
-            className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md border font-mono text-[13px] leading-none transition-colors duration-150 sm:hidden ${
-              canExecute
-                ? 'border-[color-mix(in_srgb,var(--accent)_35%,var(--border))] bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] text-[var(--accent)]'
-                : 'border-[var(--border)] text-[var(--text-faint)] opacity-40'
-            }`}
-          >
-            ↵
-          </motion.button>
+          {showExecute && (
+            <motion.button
+              type="button"
+              disabled={!canExecute}
+              whileTap={canExecute ? { scale: 0.96 } : undefined}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                submit();
+              }}
+              aria-label="Execute entry"
+              title="Execute"
+              className={`flex h-10 shrink-0 items-center gap-1.5 rounded-lg border px-3 font-mono text-[12px] tracking-wide transition-colors duration-150 ${
+                canExecute
+                  ? 'border-[color-mix(in_srgb,var(--accent)_45%,var(--border))] bg-[color-mix(in_srgb,var(--accent)_14%,var(--bg-soft))] text-[var(--accent)]'
+                  : 'border-[var(--border)] bg-[var(--bg-soft)] text-[var(--text-faint)]'
+              }`}
+            >
+              <span className="text-[14px] leading-none">↵</span>
+              <span>exec</span>
+            </motion.button>
+          )}
         </div>
       </div>
 
