@@ -7,20 +7,30 @@ export interface SystemEvent {
   timestamp: number;
 }
 
+export const PREPARE_LINES = [
+  'Preparing output...',
+  'Synchronizing...',
+  'Rendering...',
+] as const;
+
 export const TYPING_LINES = [
   'Preparing output...',
   'Synchronizing...',
-  'Rendering output...',
-  'Encrypting stream...',
+  'Rendering...',
 ] as const;
 
 export const IDLE_LINES = [
   'Heartbeat OK',
-  'Memory Optimized',
-  'Relay Synchronized',
-  'Connection Stable',
-  'Workspace Verified',
-  'Session Healthy',
+  'Workspace synchronized',
+  'Memory optimized',
+  'Relay synchronized',
+  'Connection stable',
+  'Encryption verified',
+  'Workspace verified',
+  'Relay available',
+  'Memory compacted',
+  'Background cleanup completed',
+  'Session integrity verified',
 ] as const;
 
 export function systemPrefix(tone: SystemTone): string {

@@ -45,7 +45,3 @@ export function promptLabel(role: 'host' | 'guest' | 'me' | 'friend'): string {
   return 'REMOTE ENDPOINT';
 }
 
-export function formatEntryId(index: number): string {
-  return `Entry ${String(index).padStart(3, '0')}`;
-}
-

@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ChatMessage, UserRole } from '@terminalchat/shared';
-import { formatEntryId, formatTime, promptLabel } from '@/lib/utils';
+import { MESSAGE_TTL_MS, type ChatMessage, type UserRole } from '@terminalchat/shared';
+import { formatTime, promptLabel } from '@/lib/utils';
 import { useTerminalTimeline } from '@/hooks/useTerminalTimeline';
 import { useCountdown } from '@/hooks/useCountdown';
 import {
@@ -17,6 +17,7 @@ interface MessageStreamProps {
   peerTyping: boolean;
   peerConnected: boolean;
   connected: boolean;
+  latency: number | null;
   onVisible?: (ids: string[]) => void;
   onSend: (value: string) => void;
   onTyping: (typing: boolean) => void;
@@ -28,7 +29,6 @@ type StreamItem =
       kind: 'entry';
       key: string;
       message: ChatMessage;
-      entryNo: number;
       mine: boolean;
       staged: boolean;
     }
@@ -40,6 +40,7 @@ export function MessageStream({
   peerTyping,
   peerConnected,
   connected,
+  latency,
   onVisible,
   onSend,
   onTyping,
@@ -55,10 +56,10 @@ export function MessageStream({
     connected,
     peerTyping,
     messageCount: messages.length,
+    latency,
     active: true,
   });
 
-  // Stage remote entries once with timeouts — no 48ms re-render loop (that stole focus).
   useEffect(() => {
     for (const message of messages) {
       const mine = message.senderRole === role;
@@ -76,7 +77,7 @@ export function MessageStream({
 
       if (revealedIds.has(message.id) || stageTimers.current.has(message.id)) continue;
 
-      const delay = 260 + Math.floor(Math.random() * 280);
+      const delay = 320 + Math.floor(Math.random() * 360);
       const timer = window.setTimeout(() => {
         stageTimers.current.delete(message.id);
         setRevealedIds((prev) => {
@@ -108,7 +109,6 @@ export function MessageStream({
     const root = scrollRef.current;
     if (!root) return;
 
-    // Direct scrollTop never steals textarea focus (unlike scrollIntoView on iOS/Safari).
     const pin = () => {
       root.scrollTop = root.scrollHeight;
     };
@@ -122,7 +122,6 @@ export function MessageStream({
       return;
     }
 
-    // Slight delay so layout settles after a new entry appears.
     const id = window.setTimeout(pin, 16);
     return () => window.clearTimeout(id);
   }, [displayItems.length, typingLine, ambient?.id, stagingRemote, revealedIds.size]);
@@ -131,7 +130,6 @@ export function MessageStream({
     if (!role || !onVisible) return;
     const pending = messages
       .filter((m) => {
-        // Don't mark staged (still preparing) remote entries as seen yet.
         if (m.senderRole !== role && !revealedIds.has(m.id)) return false;
         if (role === 'host') return !m.seenByHost;
         if (role === 'guest') return !m.seenByGuest;
@@ -144,7 +142,7 @@ export function MessageStream({
   return (
     <div
       ref={scrollRef}
-      className="scroll-y terminal-scroll h-full px-5 py-6 font-mono sm:px-10 sm:py-8"
+      className="scroll-y terminal-scroll h-full px-6 py-7 font-mono sm:px-12 sm:py-9"
       onMouseDown={(e) => {
         const target = e.target as HTMLElement;
         if (target.closest('textarea, button, a, input')) return;
@@ -155,8 +153,8 @@ export function MessageStream({
         }
       }}
     >
-      <div className="mx-auto flex min-h-full w-full max-w-[1180px] flex-col justify-end pb-[max(16px,var(--safe-bottom))]">
-        <div>
+      <div className="mx-auto flex min-h-full w-full max-w-[1180px] flex-col justify-end pb-[max(18px,var(--safe-bottom))]">
+        <div className="space-y-1">
           <AnimatePresence initial={false}>
             {displayItems.map((item) => {
               if (item.kind === 'system') {
@@ -169,7 +167,6 @@ export function MessageStream({
                 <TerminalEntry
                   key={item.key}
                   message={item.message}
-                  entryNo={item.entryNo}
                   mine={item.mine}
                 />
               );
@@ -188,18 +185,18 @@ export function MessageStream({
             )}
           </AnimatePresence>
 
-          <div className="pt-2">
+          <div className="pt-3">
             {displayItems.length === 0 && !typingLine && !ambient && (
-              <p className="mb-5 font-mono text-[11px] tracking-wide text-[var(--text-faint)]">
+              <p className="mb-6 font-mono text-[11px] tracking-wide text-[var(--text-faint)]">
                 {peerConnected
-                  ? 'Awaiting input.'
+                  ? 'Awaiting endpoint activity.'
                   : connected
                     ? 'Remote endpoint offline — you can still write entries.'
                     : 'Waiting for connection…'}
               </p>
             )}
             {peerConnected === false && connected && displayItems.length > 0 && (
-              <p className="mb-3 font-mono text-[10px] tracking-wide text-[var(--text-faint)]">
+              <p className="mb-4 font-mono text-[10px] tracking-wide text-[var(--text-faint)] opacity-70">
                 Remote offline — new entries sync on reconnect.
               </p>
             )}
@@ -219,11 +216,9 @@ export function MessageStream({
 
 function TerminalEntry({
   message,
-  entryNo,
   mine,
 }: {
   message: ChatMessage;
-  entryNo: number;
   mine: boolean;
 }) {
   const remaining = useCountdown(message.deleteAt);
@@ -240,7 +235,7 @@ function TerminalEntry({
 
   const ttlProgress =
     hasTtl && message.deleteAt
-      ? Math.max(0, Math.min(1, (message.deleteAt - Date.now()) / 120_000))
+      ? Math.max(0, Math.min(1, (message.deleteAt - Date.now()) / MESSAGE_TTL_MS))
       : null;
 
   return (
@@ -254,7 +249,7 @@ function TerminalEntry({
         transition: { duration: 0.35, ease: [0.22, 1, 0.36, 1] },
       }}
       transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-      className="font-mono py-5"
+      className="font-mono py-6"
     >
       <p
         className="font-mono text-[11px] font-medium uppercase tracking-[0.16em]"
@@ -263,34 +258,32 @@ function TerminalEntry({
         {endpoint}
       </p>
 
-      <p className="mt-1.5 font-mono text-[11px] tracking-wide text-[var(--text-faint)]">
-        <span className="text-[var(--text-muted)]">{formatEntryId(entryNo)}</span>
-        <span className="mx-1.5 opacity-40">·</span>
-        <span className="tabular-nums">{formatTime(message.timestamp)}</span>
+      <p className="mt-1.5 font-mono text-[11px] tabular-nums tracking-wide text-[var(--text-faint)] opacity-65">
+        {formatTime(message.timestamp)}
       </p>
 
-      <p className="mt-3 whitespace-pre-wrap break-words font-mono text-[13px] leading-7 text-[var(--text)] sm:text-[14px]">
+      <p className="mt-3 whitespace-pre-wrap break-words font-mono text-[14px] leading-7 text-[var(--text)] sm:text-[15px]">
         {message.content}
       </p>
 
-      <div className="mt-2.5 flex items-center gap-3">
+      <div className="mt-3 flex items-center gap-2.5 opacity-55">
         <p className="font-mono text-[10px] tracking-wide text-[var(--text-faint)]">
           {hasTtl ? (
             <>
-              <span className="text-[var(--text-muted)]">Memory TTL</span>{' '}
-              <span className="tabular-nums text-[var(--text-muted)]">{ttlMeta}</span>
+              Memory TTL{' '}
+              <span className="tabular-nums">{ttlMeta}</span>
             </>
           ) : (
-            <span className="opacity-70">Lifetime {ttlMeta}</span>
+            <>Lifetime {ttlMeta}</>
           )}
         </p>
         {ttlProgress != null && (
           <span
-            className="h-[2px] w-16 overflow-hidden rounded-full bg-[color-mix(in_srgb,var(--border)_80%,transparent)]"
+            className="h-[1.5px] w-12 overflow-hidden rounded-full bg-[color-mix(in_srgb,var(--border)_70%,transparent)]"
             aria-hidden
           >
             <span
-              className="block h-full origin-left bg-[var(--accent)] opacity-50 transition-[transform] duration-200 ease-linear"
+              className="block h-full origin-left bg-[var(--accent)] opacity-40 transition-[transform] duration-200 ease-linear"
               style={{ transform: `scaleX(${ttlProgress})` }}
             />
           </span>
@@ -315,7 +308,6 @@ function buildStream(
   ].sort((a, b) => a.at - b.at);
 
   const items: StreamItem[] = [];
-  let entryNo = 0;
 
   for (const entry of merged) {
     if (entry.kind === 'system') {
@@ -323,7 +315,6 @@ function buildStream(
       continue;
     }
 
-    entryNo += 1;
     const mine = entry.message.senderRole === role;
     const staged = !mine && !revealedIds.has(entry.message.id);
 
@@ -331,7 +322,6 @@ function buildStream(
       kind: 'entry',
       key: entry.message.id,
       message: entry.message,
-      entryNo,
       mine,
       staged,
     });

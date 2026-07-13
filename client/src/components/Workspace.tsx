@@ -17,6 +17,7 @@ export function Workspace() {
     peerTyping,
     peerConnected,
     connected,
+    latency,
     sendMessage,
     setTyping,
     markSeen,
@@ -31,7 +32,7 @@ export function Workspace() {
     [markSeen]
   );
 
-  // Invite UI only before the tunnel is established — never after chat starts.
+  // Invite UI only before the tunnel is established.
   const showInvite = role === 'host' && phase === 'host-ready' && !peerConnected;
 
   return (
@@ -61,6 +62,7 @@ export function Workspace() {
                 peerTyping={peerTyping}
                 peerConnected={peerConnected}
                 connected={connected}
+                latency={latency}
                 onVisible={onVisible}
                 onSend={sendMessage}
                 onTyping={setTyping}
