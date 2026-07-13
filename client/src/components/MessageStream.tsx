@@ -144,13 +144,22 @@ export function MessageStream({
       >
         <div className="mx-auto flex w-full max-w-[720px] flex-col gap-3 sm:gap-3.5">
           {displayItems.length === 0 && !typingLine && !(ambient && !isMobile) && (
-            <p className="px-1 font-mono text-[11px] tracking-wide text-[var(--text-faint)] opacity-70">
-              {peerConnected
-                ? 'Shared pad is empty. Take a note.'
-                : connected
-                  ? 'You can write notes while the remote endpoint is offline.'
-                  : 'Waiting for connection…'}
-            </p>
+            <div className="px-1 py-8 text-center sm:py-12">
+              <p className="note-body text-[18px] tracking-tight text-[var(--text-muted)] sm:text-[20px]">
+                {peerConnected
+                  ? 'Start the shared pad'
+                  : connected
+                    ? 'Write while you wait'
+                    : 'Connecting…'}
+              </p>
+              <p className="mt-2 text-[12px] tracking-wide text-[var(--text-faint)]">
+                {peerConnected
+                  ? 'Notes appear here for both of you.'
+                  : connected
+                    ? 'They’ll sync when the remote joins.'
+                    : 'Hang on while Relay restores the tunnel.'}
+              </p>
+            </div>
           )}
 
           <AnimatePresence initial={false}>
@@ -179,14 +188,14 @@ export function MessageStream({
           )}
 
           {peerConnected === false && connected && displayItems.length > 0 && (
-            <p className="px-1 py-1 font-mono text-[10px] tracking-wide text-[var(--text-faint)] opacity-50">
+            <p className="px-1 py-2 text-center text-[11px] tracking-wide text-[var(--text-faint)] opacity-60">
               Remote offline — notes sync when they return.
             </p>
           )}
         </div>
       </div>
 
-      <div className="shrink-0 border-t border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_96%,transparent)] px-3 py-3 pb-[max(12px,var(--safe-bottom))] backdrop-blur-md sm:px-8">
+      <div className="notes-dock shrink-0 px-3 pt-2 pb-[max(10px,var(--safe-bottom))] sm:px-8 sm:pt-3 sm:pb-[max(14px,var(--safe-bottom))]">
         <div className="mx-auto w-full max-w-[720px]">
           <CommandInput
             onSend={(value) => {

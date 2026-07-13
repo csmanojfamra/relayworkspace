@@ -131,12 +131,12 @@ export function JoinFlow() {
                   onClick={() => {
                     setRequesting(true);
                     setRequestHint(null);
-                    resendJoinRequest((ok) => {
+                    resendJoinRequest((ok, detail) => {
                       setRequesting(false);
                       setRequestHint(
                         ok
                           ? '> Access request sent to host again.'
-                          : '> Could not notify host. Try again.'
+                          : `> ${detail?.trim() || 'Could not notify host. Try again.'}`
                       );
                     });
                   }}

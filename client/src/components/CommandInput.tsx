@@ -34,7 +34,7 @@ export function CommandInput({ onSend, onTyping, disabled }: CommandInputProps) 
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = '0px';
-    el.style.height = `${Math.min(el.scrollHeight, isMobile ? 128 : 168)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, isMobile ? 132 : 176)}px`;
   }, [value, isMobile]);
 
   const emitTyping = (next: boolean) => {
@@ -81,7 +81,7 @@ export function CommandInput({ onSend, onTyping, disabled }: CommandInputProps) 
     <motion.form
       onSubmit={onSubmit}
       initial={false}
-      animate={{ opacity: disabled ? 0.45 : 1 }}
+      animate={{ opacity: disabled ? 0.55 : 1 }}
       transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
       className="note-composer"
       onMouseDown={(e) => {
@@ -91,7 +91,7 @@ export function CommandInput({ onSend, onTyping, disabled }: CommandInputProps) 
         textareaRef.current?.focus();
       }}
     >
-      <div className="flex items-end gap-2 px-3.5 py-3 sm:px-4 sm:py-3.5">
+      <div className="flex items-end gap-3 px-4 py-3.5 sm:px-5 sm:py-4">
         <div className="relative min-w-0 flex-1">
           <textarea
             ref={textareaRef}
@@ -107,7 +107,7 @@ export function CommandInput({ onSend, onTyping, disabled }: CommandInputProps) 
             enterKeyHint="send"
             placeholder="Take a note…"
             aria-label="Take a note"
-            className="note-body max-h-[168px] min-h-[28px] w-full resize-none overflow-y-auto bg-transparent p-0 text-[16px] leading-7 text-[var(--text)] outline-none placeholder:text-[var(--text-faint)] sm:text-[17px]"
+            className="note-body max-h-[176px] min-h-[28px] w-full resize-none overflow-y-auto bg-transparent p-0 text-[16px] leading-7 text-[var(--text)] outline-none placeholder:text-[var(--text-faint)] sm:text-[17px]"
             style={{ caretColor: 'var(--cursor)' }}
           />
         </div>
@@ -123,19 +123,19 @@ export function CommandInput({ onSend, onTyping, disabled }: CommandInputProps) 
           }}
           aria-label="Save note"
           title="Save note"
-          className={`mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors sm:h-9 sm:w-9 ${
+          className={`mb-0.5 flex h-10 min-w-10 shrink-0 items-center justify-center rounded-xl px-3 text-[13px] font-medium tracking-wide transition-colors ${
             canSave
               ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
-              : 'text-[var(--text-faint)] opacity-40'
+              : 'text-[var(--text-faint)] opacity-35'
           }`}
         >
-          <span className="text-[18px] leading-none">✓</span>
+          Done
         </motion.button>
       </div>
 
       {disabled && (
-        <p className="border-t border-[var(--border)] px-4 py-2 font-mono text-[10px] tracking-wide text-[var(--text-faint)]">
-          Offline — notes unlock when the tunnel restores
+        <p className="border-t border-[var(--border)] px-4 py-2.5 text-center text-[11px] tracking-wide text-[var(--text-faint)]">
+          Offline — writing unlocks when the connection returns
         </p>
       )}
     </motion.form>

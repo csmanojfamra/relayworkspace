@@ -121,6 +121,17 @@ a {
     var(--bg);
 }
 
+.notes-chrome {
+  transition:
+    background-color 280ms ease,
+    border-color 280ms ease;
+}
+
+.notes-dock {
+  background:
+    linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--bg) 72%, transparent) 28%, var(--bg) 100%);
+}
+
 .note-card {
   background: var(--note);
   border: 1px solid var(--note-border);
@@ -145,10 +156,12 @@ a {
 }
 
 .note-composer {
-  background: var(--note);
+  background: color-mix(in srgb, var(--note) 92%, var(--bg-elevated));
   border: 1px solid var(--note-border);
-  border-radius: 1rem;
-  box-shadow: var(--note-shadow);
+  border-radius: 1.15rem;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    var(--note-shadow);
 }
 
 .glass {
@@ -235,7 +248,8 @@ a {
   padding-left: var(--safe-left);
 }
 
-.status-bar {
+.status-bar,
+.notes-chrome {
   transition:
     background-color 280ms ease,
     border-color 280ms ease,

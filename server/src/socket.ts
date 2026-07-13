@@ -23,6 +23,47 @@ function buildInviteUrl(roomId: string, token: string): string {
   return `${origin}/join/${roomId}?token=${token}`;
 }
 
+/**
+ * Single-use invites are one guest seat. Mobile reconnects often create a new
+ * socket while the previous one is still briefly alive — always bind pending
+ * to the latest valid join so the host authorizes the live client.
+ */
+function releaseSupersededPendingGuest(
+  io: Server,
+  room: { roomId: string; pendingRequest: { guestSocketId: string } | null },
+  nextSocketId: string
+): void {
+  const previousId = room.pendingRequest?.guestSocketId;
+  if (!previousId || previousId === nextSocketId) return;
+
+  const previous = io.sockets.sockets.get(previousId);
+  if (!previous) return;
+
+  void previous.leave(room.roomId);
+  previous.emit(SocketEvents.ERROR, {
+    code: 'ROOM_FULL',
+    message: 'Access request moved to your latest connection.',
+  });
+}
+
+function notifyHostOfJoinRequest(
+  io: Server,
+  room: {
+    roomId: string;
+    hostSocketId: string | null;
+  },
+  request: JoinRequestPayload,
+  hostState: ReturnType<typeof roomStore.toPublicState>
+): void {
+  if (room.hostSocketId) {
+    io.to(room.hostSocketId).emit(SocketEvents.JOIN_REQUEST, request);
+    io.to(room.hostSocketId).emit(SocketEvents.ROOM_STATE, hostState);
+  }
+  // Host is also in the room channel — covers a stale hostSocketId briefly
+  // after reconnect before rejoin updates the seat map.
+  io.to(room.roomId).emit(SocketEvents.JOIN_REQUEST, request);
+}
+
 export function registerSocketHandlers(io: Server): void {
   bindEphemeralIO(io);
 
@@ -171,32 +212,17 @@ export function registerSocketHandlers(io: Server): void {
             return;
           }
 
-          // Refresh an existing request from this guest, or replace a stale one
-          // whose socket already disconnected.
-          if (room.pendingRequest) {
-            const pendingId = room.pendingRequest.guestSocketId;
-            const pendingAlive = Boolean(io.sockets.sockets.get(pendingId));
-            if (pendingAlive && pendingId !== socket.id) {
-              const error: ErrorPayload = {
-                code: 'ROOM_FULL',
-                message: 'An access request is already pending.',
-              };
-              emitError(socket, error);
-              ack?.(error);
-              return;
-            }
-          }
+          // Latest valid invite join wins — do not block on a briefly-alive
+          // prior socket from the same (or another) guest device.
+          releaseSupersededPendingGuest(io, room, socket.id);
 
-          void socket.join(roomId);
-
-          const requestId =
-            room.pendingRequest?.guestSocketId === socket.id
-              ? room.pendingRequest.requestId
-              : generateId();
-          const createdAt =
-            room.pendingRequest?.guestSocketId === socket.id
-              ? room.pendingRequest.createdAt
-              : Date.now();
+          const sameGuest = room.pendingRequest?.guestSocketId === socket.id;
+          const requestId = sameGuest
+            ? room.pendingRequest!.requestId
+            : generateId();
+          const createdAt = sameGuest
+            ? room.pendingRequest!.createdAt
+            : Date.now();
 
           roomStore.setPendingRequest(room, {
             requestId,
@@ -211,15 +237,13 @@ export function registerSocketHandlers(io: Server): void {
             createdAt,
           };
 
-          // Deliver via socket id and room channel so the host always sees it.
-          if (room.hostSocketId) {
-            io.to(room.hostSocketId).emit(SocketEvents.JOIN_REQUEST, request);
-            io.to(room.hostSocketId).emit(
-              SocketEvents.ROOM_STATE,
-              roomStore.toPublicState(room, 'host')
-            );
-          }
-          io.to(roomId).emit(SocketEvents.JOIN_REQUEST, request);
+          // Join only after host authorizes — keeps chat room to accepted seats.
+          notifyHostOfJoinRequest(
+            io,
+            room,
+            request,
+            roomStore.toPublicState(room, 'host')
+          );
           ack?.({ status: 'pending' });
         } catch {
           const error: ErrorPayload = {
@@ -259,107 +283,65 @@ export function registerSocketHandlers(io: Server): void {
           return;
         }
 
-        // Reuse existing pending request from this guest, replace a stale one,
-        // or create a new request.
-        let request: JoinRequestPayload;
-        if (
-          room.pendingRequest &&
-          room.pendingRequest.guestSocketId === socket.id
-        ) {
-          request = {
-            requestId: room.pendingRequest.requestId,
-            roomId: room.roomId,
-            guestSocketId: socket.id,
-            createdAt: room.pendingRequest.createdAt,
+        if (!room.inviteToken || room.inviteStatus !== 'active') {
+          const error: ErrorPayload = {
+            code: 'EXPIRED_INVITE',
+            message: 'Invite Expired',
           };
-        } else if (room.pendingRequest) {
-          const pendingAlive = Boolean(
-            io.sockets.sockets.get(room.pendingRequest.guestSocketId)
-          );
-          if (pendingAlive) {
-            const error: ErrorPayload = {
-              code: 'ROOM_FULL',
-              message: 'An access request is already pending.',
-            };
-            emitError(socket, error);
-            ack?.(error);
-            return;
-          }
-          if (!room.inviteToken || room.inviteStatus !== 'active') {
-            const error: ErrorPayload = {
-              code: 'EXPIRED_INVITE',
-              message: 'Invite Expired',
-            };
-            emitError(socket, error);
-            ack?.(error);
-            return;
-          }
-          if (room.inviteToken !== payload.token) {
-            const error: ErrorPayload = {
-              code: 'INVALID_INVITE',
-              message: 'Invalid Invite',
-            };
-            emitError(socket, error);
-            ack?.(error);
-            return;
-          }
-
-          const requestId = generateId();
-          roomStore.setPendingRequest(room, {
-            requestId,
-            guestSocketId: socket.id,
-            createdAt: Date.now(),
-          });
-          request = {
-            requestId,
-            roomId: room.roomId,
-            guestSocketId: socket.id,
-            createdAt: Date.now(),
-          };
-        } else {
-          if (!room.inviteToken || room.inviteStatus !== 'active') {
-            const error: ErrorPayload = {
-              code: 'EXPIRED_INVITE',
-              message: 'Invite Expired',
-            };
-            emitError(socket, error);
-            ack?.(error);
-            return;
-          }
-          if (room.inviteToken !== payload.token) {
-            const error: ErrorPayload = {
-              code: 'INVALID_INVITE',
-              message: 'Invalid Invite',
-            };
-            emitError(socket, error);
-            ack?.(error);
-            return;
-          }
-
-          const requestId = generateId();
-          roomStore.setPendingRequest(room, {
-            requestId,
-            guestSocketId: socket.id,
-            createdAt: Date.now(),
-          });
-          request = {
-            requestId,
-            roomId: room.roomId,
-            guestSocketId: socket.id,
-            createdAt: Date.now(),
-          };
+          emitError(socket, error);
+          ack?.(error);
+          return;
         }
 
-        void socket.join(room.roomId);
-
-        if (room.hostSocketId) {
-          io.to(room.hostSocketId).emit(SocketEvents.JOIN_REQUEST, request);
-          io.to(room.hostSocketId).emit(
-            SocketEvents.ROOM_STATE,
-            roomStore.toPublicState(room, 'host')
-          );
+        if (room.inviteToken !== payload.token) {
+          const error: ErrorPayload = {
+            code: 'INVALID_INVITE',
+            message: 'Invalid Invite',
+          };
+          emitError(socket, error);
+          ack?.(error);
+          return;
         }
-        io.to(room.roomId).emit(SocketEvents.JOIN_REQUEST, request);
+
+        releaseSupersededPendingGuest(io, room, socket.id);
+
+        const sameGuest = room.pendingRequest?.guestSocketId === socket.id;
+        const requestId = sameGuest
+          ? room.pendingRequest!.requestId
+          : generateId();
+        const createdAt = sameGuest
+          ? room.pendingRequest!.createdAt
+          : Date.now();
+
+        roomStore.setPendingRequest(room, {
+          requestId,
+          guestSocketId: socket.id,
+          createdAt,
+        });
+
+        const request: JoinRequestPayload = {
+          requestId,
+          roomId: room.roomId,
+          guestSocketId: socket.id,
+          createdAt,
+        };
+
+        if (!room.hostSocketId) {
+          const error: ErrorPayload = {
+            code: 'HOST_LEFT',
+            message: 'Host is offline. Keep this open — retry when they return.',
+          };
+          // Pending is stored; host will see it on rejoin via GET_PENDING / REJOIN.
+          ack?.(error);
+          return;
+        }
+
+        notifyHostOfJoinRequest(
+          io,
+          room,
+          request,
+          roomStore.toPublicState(room, 'host')
+        );
         ack?.({ status: 'pending' });
       }
     );

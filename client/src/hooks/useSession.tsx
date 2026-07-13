@@ -53,7 +53,7 @@ interface SessionContextValue {
   acceptRequest: () => void;
   rejectRequest: () => void;
   checkPendingRequest: (onResult?: (found: boolean) => void) => void;
-  resendJoinRequest: (onResult?: (ok: boolean) => void) => void;
+  resendJoinRequest: (onResult?: (ok: boolean, detail?: string) => void) => void;
   sendMessage: (content: string) => void;
   setTyping: (typing: boolean) => void;
   markSeen: (ids: string[]) => void;
@@ -536,30 +536,46 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [ensureSocket]);
 
   const resendJoinRequest = useCallback(
-    (onResult?: (ok: boolean) => void) => {
-      if (!roomId || !inviteToken) {
-        onResult?.(false);
+    (onResult?: (ok: boolean, detail?: string) => void) => {
+      const activeRoom = roomIdRef.current ?? roomId;
+      const token = inviteTokenRef.current ?? inviteToken;
+      if (!activeRoom || !token) {
+        onResult?.(false, 'Missing invite. Re-open the link.');
         return;
       }
       const socket = ensureSocket();
+      let settled = false;
+
+      const finish = (ok: boolean, detail?: string) => {
+        if (settled) return;
+        settled = true;
+        onResult?.(ok, detail);
+      };
+
       const emitResend = () => {
-        socket.emit(
+        const active = socketRef.current ?? socket;
+        if (!active.connected) return;
+        active.emit(
           SocketEvents.RESEND_JOIN_REQUEST,
-          { roomId, token: inviteToken },
+          { roomId: activeRoom, token },
           (result: { status: 'pending' } | ErrorPayload) => {
+            if (!result || typeof result !== 'object') {
+              finish(false, 'No response from Relay.');
+              return;
+            }
             if ('code' in result) {
               // Keep guest on the waiting screen for transient host blips.
               if (result.code === 'HOST_LEFT' || result.code === 'ROOM_FULL') {
-                onResult?.(false);
+                finish(false, result.message);
                 return;
               }
               setError(result);
               setPhase('error');
-              onResult?.(false);
+              finish(false, result.message);
               return;
             }
             setPhase('waiting-approval');
-            onResult?.(true);
+            finish(true);
           }
         );
       };
@@ -570,6 +586,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         socket.once('connect', emitResend);
         if (!socket.active) socket.connect();
       }
+
+      window.setTimeout(() => {
+        finish(false, 'Host did not respond in time. Try again.');
+      }, 12000);
     },
     [ensureSocket, roomId, inviteToken]
   );
