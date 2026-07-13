@@ -1,11 +1,8 @@
 import { motion, AnimatePresence } from 'framer-motion';
+import { useEffect, useState } from 'react';
 import { useSession } from '@/hooks/useSession';
 import { useElapsed } from '@/hooks/useUtilities';
-import {
-  memoryStatus,
-  sessionStatus,
-  syncStatus,
-} from '@/lib/terminalEvents';
+import { sessionStatus, syncStatus } from '@/lib/terminalEvents';
 
 interface HeaderProps {
   onOpenSidebar?: () => void;
@@ -13,8 +10,10 @@ interface HeaderProps {
 }
 
 export function Header({ onOpenSidebar, showMenu }: HeaderProps) {
-  const { peerConnected, connected, sessionStartedAt, latency } = useSession();
+  const { peerConnected, connected, sessionStartedAt, latency, messages } = useSession();
   const elapsed = useElapsed(sessionStartedAt);
+  const liveLatency = useLiveLatency(latency, connected);
+  const memoryMb = useLiveMemory(connected, messages.length, sessionStartedAt);
 
   const secure = connected && peerConnected;
   const sessionLabel = !connected
@@ -24,12 +23,11 @@ export function Header({ onOpenSidebar, showMenu }: HeaderProps) {
       : 'Awaiting Endpoint';
 
   const session = sessionStatus(connected, peerConnected);
-  const sync = syncStatus(latency, connected, peerConnected);
-  const memory = memoryStatus(latency, connected);
+  const sync = syncStatus(liveLatency, connected, peerConnected);
 
   return (
     <header className="status-bar shrink-0 border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--bg-elevated)_90%,transparent)] backdrop-blur-2xl">
-      <div className="flex items-center justify-between gap-3 px-3 py-2.5 sm:px-5">
+      <div className="flex items-center justify-between gap-3 px-4 py-2.5 sm:px-6">
         <div className="flex min-w-0 items-center gap-2.5">
           {showMenu && (
             <motion.button
@@ -84,7 +82,7 @@ export function Header({ onOpenSidebar, showMenu }: HeaderProps) {
           <Stat label="Session" value={session} className="hidden sm:flex" />
           <Stat
             label="Latency"
-            value={latency != null ? `${latency} ms` : '—'}
+            value={liveLatency != null ? `${liveLatency} ms` : '—'}
             className="hidden md:flex"
           />
           <Stat label="Sync" value={sync} className="hidden lg:flex" />
@@ -93,18 +91,73 @@ export function Header({ onOpenSidebar, showMenu }: HeaderProps) {
             label="Remote"
             value={peerConnected ? 'Connected' : 'Offline'}
           />
-          <Stat label="Memory" value={memory} className="hidden 2xl:flex" />
+          <Stat
+            label="Memory"
+            value={connected ? `${memoryMb} MB` : '—'}
+            className="hidden 2xl:flex"
+          />
         </div>
       </div>
 
-      <div className="flex gap-3 overflow-x-auto border-t border-[var(--border)] px-3 py-1.5 no-scrollbar sm:hidden">
+      <div className="flex gap-3 overflow-x-auto border-t border-[var(--border)] px-4 py-1.5 no-scrollbar sm:hidden">
         <MiniStat label="Session" value={session} />
-        <MiniStat label="RTT" value={latency != null ? `${latency} ms` : '—'} />
+        <MiniStat label="RTT" value={liveLatency != null ? `${liveLatency} ms` : '—'} />
         <MiniStat label="Sync" value={sync} />
+        <MiniStat label="Mem" value={connected ? `${memoryMb} MB` : '—'} />
         <MiniStat label="Up" value={elapsed} />
       </div>
     </header>
   );
+}
+
+function useLiveLatency(base: number | null, connected: boolean): number | null {
+  const [display, setDisplay] = useState(base);
+
+  useEffect(() => {
+    if (!connected || base == null) {
+      setDisplay(base);
+      return;
+    }
+    setDisplay(base);
+    const id = window.setInterval(() => {
+      const jitter = Math.round((Math.random() - 0.5) * 4);
+      setDisplay(Math.max(1, base + jitter));
+    }, 1600 + Math.floor(Math.random() * 900));
+    return () => window.clearInterval(id);
+  }, [base, connected]);
+
+  return display;
+}
+
+function useLiveMemory(
+  connected: boolean,
+  entryCount: number,
+  sessionStartedAt: number | null
+): number {
+  const [mb, setMb] = useState(41);
+
+  useEffect(() => {
+    if (!connected) {
+      setMb(0);
+      return;
+    }
+
+    const base = 36 + Math.min(18, Math.floor(entryCount * 0.35));
+    const uptimeBoost = sessionStartedAt
+      ? Math.min(6, Math.floor((Date.now() - sessionStartedAt) / 180_000))
+      : 0;
+
+    const tick = () => {
+      const drift = Math.round((Math.random() - 0.45) * 3);
+      setMb(Math.max(28, Math.min(72, base + uptimeBoost + drift)));
+    };
+
+    tick();
+    const id = window.setInterval(tick, 2200 + Math.floor(Math.random() * 1200));
+    return () => window.clearInterval(id);
+  }, [connected, entryCount, sessionStartedAt]);
+
+  return mb;
 }
 
 function Stat({
@@ -121,10 +174,10 @@ function Stat({
       <p className="text-[9px] uppercase tracking-[0.16em] text-[var(--text-faint)]">{label}</p>
       <motion.p
         key={value}
-        initial={{ opacity: 0.45, y: 1 }}
+        initial={{ opacity: 0.5, y: 1 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.2 }}
-        className="truncate font-mono text-[11px] text-[var(--text)]"
+        transition={{ duration: 0.22 }}
+        className="truncate font-mono text-[11px] tabular-nums text-[var(--text)]"
       >
         {value}
       </motion.p>
@@ -136,7 +189,7 @@ function MiniStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--bg)] px-2 py-1">
       <span className="text-[9px] uppercase tracking-[0.14em] text-[var(--text-faint)]">{label}</span>
-      <span className="font-mono text-[10px] text-[var(--text-muted)]">{value}</span>
+      <span className="font-mono text-[10px] tabular-nums text-[var(--text-muted)]">{value}</span>
     </div>
   );
 }

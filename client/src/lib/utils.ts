@@ -30,6 +30,18 @@ export function formatTime(ts: number): string {
   }).format(new Date(ts));
 }
 
+/** UTC clock for endpoint history — reads like system logs. */
+export function formatUtcTime(ts: number): string {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+    timeZone: 'UTC',
+  }).format(new Date(ts));
+  return `${parts} UTC`;
+}
+
 export function formatDateTime(ts: number): string {
   return new Intl.DateTimeFormat(undefined, {
     month: 'short',

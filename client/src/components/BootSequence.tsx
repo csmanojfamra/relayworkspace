@@ -3,11 +3,12 @@ import { useEffect, useState } from 'react';
 import { useSession } from '@/hooks/useSession';
 
 const STEPS = [
-  'Initializing Workspace...',
-  'Loading Interface...',
-  'Synchronizing Session...',
-  'Establishing Secure Tunnel...',
-  'Secure Tunnel Established.',
+  'Initializing workspace...',
+  'Loading relay engine...',
+  'Generating session keys...',
+  'Establishing secure tunnel...',
+  'Synchronizing endpoints...',
+  'Workspace ready.',
 ];
 
 export function BootSequence() {

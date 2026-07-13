@@ -4,45 +4,50 @@ export interface SystemEvent {
   id: string;
   tone: SystemTone;
   text: string;
+  detail?: string[];
   timestamp: number;
 }
 
 export const PREPARE_LINES = [
-  'Preparing output...',
-  'Synchronizing...',
-  'Rendering...',
+  'Receiving payload...',
+  'Integrity verified.',
+  'Rendering output...',
 ] as const;
 
 export const TYPING_LINES = [
-  'Preparing output...',
-  'Synchronizing...',
-  'Rendering...',
+  'Receiving payload...',
+  'Synchronizing stream...',
+  'Awaiting commit...',
 ] as const;
 
 export const IDLE_LINES = [
   'Heartbeat OK',
-  'Workspace synchronized',
-  'Memory optimized',
-  'Relay synchronized',
+  'Workspace idle',
+  'Listening...',
+  'Relay healthy',
+  'Memory stable',
   'Connection stable',
-  'Encryption verified',
   'Workspace verified',
   'Relay available',
-  'Memory compacted',
-  'Background cleanup completed',
   'Session integrity verified',
+  'Background cleanup completed',
+  'Memory compacted',
+  'Relay synchronized',
+  'Encryption verified',
+  'Workspace synchronized',
+  'Awaiting endpoint activity',
 ] as const;
 
 export function systemPrefix(tone: SystemTone): string {
   switch (tone) {
     case 'ok':
-      return '✓';
+      return '[OK]';
     case 'warn':
-      return '⚠';
+      return '[WARN]';
     case 'idle':
       return '·';
     default:
-      return '›';
+      return '[INFO]';
   }
 }
 
@@ -62,14 +67,7 @@ export function syncStatus(
 export function sessionStatus(connected: boolean, peerConnected: boolean): string {
   if (!connected) return 'Reconnecting';
   if (!peerConnected) return 'Standby';
-  return 'Active';
-}
-
-export function memoryStatus(latency: number | null, connected: boolean): string {
-  if (!connected) return 'Paused';
-  if (latency == null) return 'Warming';
-  if (latency < 200) return 'Normal';
-  return 'Elevated';
+  return 'Encrypted';
 }
 
 export function connectionHealth(
@@ -83,4 +81,12 @@ export function connectionHealth(
 /** @deprecated Prefer syncStatus — kept for sidebar compatibility */
 export function packetStatus(latency: number | null, connected: boolean): string {
   return syncStatus(latency, connected, true);
+}
+
+/** @deprecated Prefer live MB display in Header */
+export function memoryStatus(latency: number | null, connected: boolean): string {
+  if (!connected) return 'Paused';
+  if (latency == null) return 'Warming';
+  if (latency < 200) return 'Normal';
+  return 'Elevated';
 }

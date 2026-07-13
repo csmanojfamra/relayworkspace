@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { SystemEvent } from '@/lib/terminalEvents';
 import { TYPING_LINES } from '@/lib/terminalEvents';
-import { WorkspaceTelemetry } from '@/lib/workspaceTelemetry';
+import { WorkspaceTelemetryEngine } from '@/lib/workspaceTelemetry';
 
 interface TimelineOptions {
   peerConnected: boolean;
@@ -24,7 +24,7 @@ export function useTerminalTimeline({
   const [typingLine, setTypingLine] = useState<string | null>(null);
   const [ambient, setAmbient] = useState<SystemEvent | null>(null);
 
-  const telemetry = useRef(new WorkspaceTelemetry());
+  const telemetry = useRef(new WorkspaceTelemetryEngine());
   const prevPeer = useRef<boolean | null>(null);
   const prevConnected = useRef<boolean | null>(null);
   const prevCount = useRef(messageCount);
@@ -33,15 +33,16 @@ export function useTerminalTimeline({
   const announcedChannel = useRef(false);
   const memoryTick = useRef(0);
 
-  const pushMany = (next: SystemEvent | SystemEvent[]) => {
+  const pushMany = (next: SystemEvent | SystemEvent[] | null) => {
+    if (!next) return;
     const list = Array.isArray(next) ? next : [next];
     if (!list.length) return;
     setEvents((prev) => {
       let out = prev;
       for (const event of list) {
         const last = out[out.length - 1];
-        if (last && last.text === event.text && Date.now() - last.timestamp < 1600) continue;
-        out = [...out.slice(-48), event];
+        if (last && last.text === event.text && Date.now() - last.timestamp < 1800) continue;
+        out = [...out.slice(-56), event];
       }
       return out;
     });
@@ -50,19 +51,24 @@ export function useTerminalTimeline({
   };
 
   useEffect(() => {
+    if (!active || !connected) return;
+    if (announcedChannel.current) return;
+    announcedChannel.current = true;
+    pushMany(telemetry.current.onSessionStarted());
+  }, [active, connected]);
+
+  useEffect(() => {
     if (!active) return;
 
     if (prevPeer.current === null) {
       prevPeer.current = peerConnected;
-      if (peerConnected && !announcedChannel.current) {
-        announcedChannel.current = true;
-        pushMany(telemetry.current.onSessionCreated());
+      if (peerConnected) {
+        pushMany(telemetry.current.onRemoteConnected());
       }
       return;
     }
 
     if (peerConnected && !prevPeer.current) {
-      announcedChannel.current = true;
       pushMany(telemetry.current.onRemoteConnected());
     } else if (!peerConnected && prevPeer.current) {
       pushMany(telemetry.current.onRemoteDisconnected());
@@ -93,16 +99,14 @@ export function useTerminalTimeline({
     setAmbient(null);
 
     if (messageCount < prevCount.current) {
-      const purged = telemetry.current.onMessageExpired();
-      if (purged) pushMany(purged);
+      pushMany(telemetry.current.onMessageExpired());
     }
     prevCount.current = messageCount;
   }, [messageCount, peerTyping]);
 
   useEffect(() => {
     if (!active || !connected) return;
-    const event = telemetry.current.onLatencyChange(latency);
-    if (event) pushMany(event);
+    pushMany(telemetry.current.onLatencySpike(latency));
   }, [latency, active, connected]);
 
   useEffect(() => {
@@ -122,33 +126,33 @@ export function useTerminalTimeline({
   }, [peerTyping]);
 
   useEffect(() => {
-    if (!active || !peerConnected || peerTyping) {
+    if (!active || !connected || peerTyping) {
       setAmbient(null);
       return;
     }
 
+    const scheduleNext = (fn: () => void) =>
+      window.setTimeout(fn, 60_000 + Math.floor(Math.random() * 60_000));
+
+    let timer = 0;
+
     const tick = () => {
       const quietFor = Date.now() - lastActivity.current;
-      const idle = telemetry.current.onIdle(quietFor);
-      if (!idle) {
-        setAmbient(null);
-        return;
-      }
       memoryTick.current += 1;
-      if (memoryTick.current % 4 === 0) {
+
+      if (memoryTick.current % 5 === 0 && quietFor > 70_000) {
         setAmbient(telemetry.current.onMemoryCleanup());
-        return;
+      } else {
+        const idle = telemetry.current.onIdle(quietFor);
+        setAmbient(idle);
       }
-      setAmbient(idle);
+
+      timer = scheduleNext(tick);
     };
 
-    const id = window.setInterval(tick, 55_000 + Math.floor(Math.random() * 35_000));
-    const first = window.setTimeout(tick, 48_000 + Math.floor(Math.random() * 40_000));
-    return () => {
-      window.clearInterval(id);
-      window.clearTimeout(first);
-    };
-  }, [active, peerConnected, peerTyping, messageCount]);
+    timer = scheduleNext(tick);
+    return () => window.clearTimeout(timer);
+  }, [active, connected, peerTyping, peerConnected, messageCount]);
 
   return { events, typingLine, ambient };
 }

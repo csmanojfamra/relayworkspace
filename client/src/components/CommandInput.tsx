@@ -87,8 +87,8 @@ export function CommandInput({ onSend, onTyping, disabled }: CommandInputProps) 
     >
       <div className="flex items-start gap-2">
         <p className="shrink-0 select-none pt-[2px] font-mono text-[12px] leading-7 tracking-tight">
-          <span style={{ color: 'var(--me)' }}>local.endpoint</span>
-          <span className="text-[var(--text-faint)]"> ~/workspace</span>
+          <span style={{ color: 'var(--me)' }}>relay@local</span>
+          <span className="text-[var(--text-faint)]">:~/workspace</span>
           <span className="ml-1.5 text-[var(--accent)]">❯</span>
         </p>
         <div className="relative min-w-0 flex-1">

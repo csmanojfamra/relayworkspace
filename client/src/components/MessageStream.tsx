@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MESSAGE_TTL_MS, type ChatMessage, type UserRole } from '@terminalchat/shared';
-import { formatTime, promptLabel } from '@/lib/utils';
+import { formatUtcTime, promptLabel } from '@/lib/utils';
 import { useTerminalTimeline } from '@/hooks/useTerminalTimeline';
 import { useCountdown } from '@/hooks/useCountdown';
 import {
@@ -77,7 +77,8 @@ export function MessageStream({
 
       if (revealedIds.has(message.id) || stageTimers.current.has(message.id)) continue;
 
-      const delay = 320 + Math.floor(Math.random() * 360);
+      // 400–700ms secure relay staging
+      const delay = 400 + Math.floor(Math.random() * 300);
       const timer = window.setTimeout(() => {
         stageTimers.current.delete(message.id);
         setRevealedIds((prev) => {
@@ -142,7 +143,7 @@ export function MessageStream({
   return (
     <div
       ref={scrollRef}
-      className="scroll-y terminal-scroll h-full px-6 py-7 font-mono sm:px-12 sm:py-9"
+      className="scroll-y terminal-scroll h-full px-7 py-8 font-mono sm:px-14 sm:py-10"
       onMouseDown={(e) => {
         const target = e.target as HTMLElement;
         if (target.closest('textarea, button, a, input')) return;
@@ -154,7 +155,7 @@ export function MessageStream({
       }}
     >
       <div className="mx-auto flex min-h-full w-full max-w-[1180px] flex-col justify-end pb-[max(18px,var(--safe-bottom))]">
-        <div className="space-y-1">
+        <div className="space-y-0.5">
           <AnimatePresence initial={false}>
             {displayItems.map((item) => {
               if (item.kind === 'system') {
@@ -185,19 +186,19 @@ export function MessageStream({
             )}
           </AnimatePresence>
 
-          <div className="pt-3">
+          <div className="pt-4">
             {displayItems.length === 0 && !typingLine && !ambient && (
-              <p className="mb-6 font-mono text-[11px] tracking-wide text-[var(--text-faint)]">
+              <p className="mb-7 font-mono text-[11px] tracking-wide text-[var(--text-faint)] opacity-70">
                 {peerConnected
                   ? 'Awaiting endpoint activity.'
                   : connected
-                    ? 'Remote endpoint offline — you can still write entries.'
+                    ? 'Remote endpoint offline — local prompt remains available.'
                     : 'Waiting for connection…'}
               </p>
             )}
             {peerConnected === false && connected && displayItems.length > 0 && (
-              <p className="mb-4 font-mono text-[10px] tracking-wide text-[var(--text-faint)] opacity-70">
-                Remote offline — new entries sync on reconnect.
+              <p className="mb-5 font-mono text-[10px] tracking-wide text-[var(--text-faint)] opacity-55">
+                Remote offline — entries sync when the endpoint returns.
               </p>
             )}
             <CommandInput
@@ -226,13 +227,6 @@ function TerminalEntry({
   const endpoint = promptLabel(mine ? 'me' : 'friend');
   const hasTtl = Boolean(message.deleteAt && remaining);
 
-  const ttlMeta = (() => {
-    if (hasTtl && remaining) return remaining;
-    if (bothSeen) return 'armed';
-    if (message.delivered) return 'synced';
-    return 'pending';
-  })();
-
   const ttlProgress =
     hasTtl && message.deleteAt
       ? Math.max(0, Math.min(1, (message.deleteAt - Date.now()) / MESSAGE_TTL_MS))
@@ -249,46 +243,49 @@ function TerminalEntry({
         transition: { duration: 0.35, ease: [0.22, 1, 0.36, 1] },
       }}
       transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-      className="font-mono py-6"
+      className="font-mono py-7"
     >
       <p
-        className="font-mono text-[11px] font-medium uppercase tracking-[0.16em]"
+        className="font-mono text-[10px] font-medium uppercase tracking-[0.18em]"
         style={{ color: mine ? 'var(--me)' : 'var(--peer)' }}
       >
         {endpoint}
       </p>
 
-      <p className="mt-1.5 font-mono text-[11px] tabular-nums tracking-wide text-[var(--text-faint)] opacity-65">
-        {formatTime(message.timestamp)}
+      <p className="mt-1.5 font-mono text-[10px] tabular-nums tracking-wide text-[var(--text-faint)] opacity-50">
+        {formatUtcTime(message.timestamp)}
       </p>
 
-      <p className="mt-3 whitespace-pre-wrap break-words font-mono text-[14px] leading-7 text-[var(--text)] sm:text-[15px]">
+      <p className="mt-3.5 whitespace-pre-wrap break-words font-mono text-[14px] leading-7 text-[var(--text)] sm:text-[15px]">
         {message.content}
       </p>
 
-      <div className="mt-3 flex items-center gap-2.5 opacity-55">
-        <p className="font-mono text-[10px] tracking-wide text-[var(--text-faint)]">
-          {hasTtl ? (
-            <>
-              Memory TTL{' '}
-              <span className="tabular-nums">{ttlMeta}</span>
-            </>
-          ) : (
-            <>Lifetime {ttlMeta}</>
-          )}
-        </p>
-        {ttlProgress != null && (
-          <span
-            className="h-[1.5px] w-12 overflow-hidden rounded-full bg-[color-mix(in_srgb,var(--border)_70%,transparent)]"
-            aria-hidden
-          >
+      {(hasTtl || bothSeen || message.delivered) && (
+        <div className="mt-3.5 flex items-center gap-2 opacity-40">
+          <p className="font-mono text-[9px] tracking-wide text-[var(--text-faint)]">
+            {hasTtl && remaining ? (
+              <>
+                Memory TTL <span className="tabular-nums">{remaining}</span>
+              </>
+            ) : bothSeen ? (
+              'Memory TTL armed'
+            ) : (
+              'Memory sync pending'
+            )}
+          </p>
+          {ttlProgress != null && (
             <span
-              className="block h-full origin-left bg-[var(--accent)] opacity-40 transition-[transform] duration-200 ease-linear"
-              style={{ transform: `scaleX(${ttlProgress})` }}
-            />
-          </span>
-        )}
-      </div>
+              className="h-px w-10 overflow-hidden bg-[color-mix(in_srgb,var(--border)_80%,transparent)]"
+              aria-hidden
+            >
+              <span
+                className="block h-full origin-left bg-[var(--accent)] opacity-50 transition-[transform] duration-200 ease-linear"
+                style={{ transform: `scaleX(${ttlProgress})` }}
+              />
+            </span>
+          )}
+        </div>
+      )}
     </motion.article>
   );
 }
