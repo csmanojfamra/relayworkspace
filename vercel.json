@@ -8,14 +8,18 @@
   "rewrites": [
     {
       "source": "/socket.io",
-      "destination": "https://web-production-76c64.up.railway.app/socket.io"
+      "destination": "https://web-production-76c64.up.railway.app/socket.io/"
+    },
+    {
+      "source": "/socket.io/",
+      "destination": "https://web-production-76c64.up.railway.app/socket.io/"
     },
     {
       "source": "/socket.io/:path*",
       "destination": "https://web-production-76c64.up.railway.app/socket.io/:path*"
     },
     {
-      "source": "/(.*)",
+      "source": "/((?!socket\\.io(?:/|$)).*)",
       "destination": "/index.html"
     }
   ]
