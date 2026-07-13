@@ -505,6 +505,42 @@ export function registerSocketHandlers(io: Server): void {
       }
     );
 
+    socket.on(
+      SocketEvents.CLEAR_MESSAGES,
+      (ack?: (result: { ok: boolean; cleared: number } | ErrorPayload) => void) => {
+        const binding = roomStore.getSocketBinding(socket.id);
+        if (!binding) {
+          const error: ErrorPayload = {
+            code: 'UNAUTHORIZED',
+            message: 'Not in a workspace.',
+          };
+          emitError(socket, error);
+          ack?.(error);
+          return;
+        }
+
+        const room = roomStore.getRoom(binding.roomId);
+        if (!room) {
+          const error: ErrorPayload = {
+            code: 'ROOM_NOT_FOUND',
+            message: 'Workspace not found.',
+          };
+          emitError(socket, error);
+          ack?.(error);
+          return;
+        }
+
+        clearRoomTimers(room.roomId);
+        const cleared = roomStore.clearMessages(room);
+        io.to(room.roomId).emit(SocketEvents.MESSAGES_CLEARED, {
+          roomId: room.roomId,
+          clearedBy: binding.role,
+          cleared,
+        });
+        ack?.({ ok: true, cleared });
+      }
+    );
+
     socket.on(SocketEvents.TYPING_START, () => {
       const binding = roomStore.getSocketBinding(socket.id);
       if (!binding) return;

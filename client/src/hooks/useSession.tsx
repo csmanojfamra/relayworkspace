@@ -55,6 +55,7 @@ interface SessionContextValue {
   checkPendingRequest: (onResult?: (found: boolean) => void) => void;
   resendJoinRequest: (onResult?: (ok: boolean, detail?: string) => void) => void;
   sendMessage: (content: string) => void;
+  clearMessages: (onResult?: (ok: boolean) => void) => void;
   setTyping: (typing: boolean) => void;
   markSeen: (ids: string[]) => void;
   reset: () => void;
@@ -286,6 +287,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
     socket.on(SocketEvents.MESSAGE_DELETED, (payload: { messageId: string }) => {
       setMessages((prev) => prev.filter((m) => m.id !== payload.messageId));
+    });
+
+    socket.on(SocketEvents.MESSAGES_CLEARED, () => {
+      setMessages([]);
+      setPeerTyping(false);
     });
 
     socket.on(SocketEvents.TYPING_START, () => setPeerTyping(true));
@@ -594,15 +600,45 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [ensureSocket, roomId, inviteToken]
   );
 
+  const clearMessages = useCallback(
+    (onResult?: (ok: boolean) => void) => {
+      const socket = ensureSocket();
+      if (!socket.connected) {
+        onResult?.(false);
+        return;
+      }
+      socket.emit(
+        SocketEvents.CLEAR_MESSAGES,
+        (result: { ok: boolean; cleared: number } | ErrorPayload) => {
+          if (!result || typeof result !== 'object' || 'code' in result) {
+            onResult?.(false);
+            return;
+          }
+          setMessages([]);
+          setPeerTyping(false);
+          onResult?.(Boolean(result.ok));
+        }
+      );
+    },
+    [ensureSocket]
+  );
+
   const sendMessage = useCallback(
     (content: string) => {
       const socket = ensureSocket();
       const trimmed = content.trim();
       if (!trimmed) return;
+
+      // Slash command — wipe the shared pad for both endpoints.
+      if (/^\/clear(?:\s+all)?$/i.test(trimmed)) {
+        clearMessages();
+        return;
+      }
+
       socket.emit(SocketEvents.SEND_MESSAGE, { content: trimmed });
       socket.emit(SocketEvents.TYPING_STOP);
     },
-    [ensureSocket]
+    [ensureSocket, clearMessages]
   );
 
   const setTyping = useCallback(
@@ -707,6 +743,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       checkPendingRequest,
       resendJoinRequest,
       sendMessage,
+      clearMessages,
       setTyping,
       markSeen,
       reset,
@@ -738,6 +775,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       checkPendingRequest,
       resendJoinRequest,
       sendMessage,
+      clearMessages,
       setTyping,
       markSeen,
       reset,

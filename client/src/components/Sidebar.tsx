@@ -1,9 +1,8 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useSession } from '@/hooks/useSession';
 import { useTheme } from '@/hooks/useTheme';
 import { useElapsed } from '@/hooks/useUtilities';
-import { connectionHealth } from '@/lib/terminalEvents';
 
 interface SidebarProps {
   open: boolean;
@@ -19,17 +18,41 @@ export function Sidebar({ open, onClose, mobile = false, fill = false }: Sidebar
     peerConnected,
     latency,
     sessionStartedAt,
+    messages,
+    clearMessages,
   } = useSession();
   const { themeId, setThemeId, themes } = useTheme();
   const elapsed = useElapsed(sessionStartedAt);
-  const health = connectionHealth(latency, connected, peerConnected);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const noteCount = messages.length;
+
+  useEffect(() => {
+    if (!confirmClear) return;
+    const id = window.setTimeout(() => setConfirmClear(false), 4000);
+    return () => window.clearTimeout(id);
+  }, [confirmClear]);
+
+  const onClearPad = () => {
+    if (!noteCount || clearing || !connected) return;
+    if (!confirmClear) {
+      setConfirmClear(true);
+      return;
+    }
+    setClearing(true);
+    clearMessages((ok) => {
+      setClearing(false);
+      setConfirmClear(false);
+      if (ok && mobile) onClose();
+    });
+  };
 
   const content = (
     <aside className="flex h-full w-full flex-col border-r border-[var(--border)] bg-[var(--bg-elevated)]">
       <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-4">
         <div>
           <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--text-faint)]">
-            Workspace Information
+            Shared pad
           </p>
           <p className="mt-1.5 font-mono text-[13px] text-[var(--text)]">{roomId ?? '—'}</p>
         </div>
@@ -38,7 +61,7 @@ export function Sidebar({ open, onClose, mobile = false, fill = false }: Sidebar
             type="button"
             whileTap={{ scale: 0.94 }}
             onClick={onClose}
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--border)] text-[var(--text-muted)] transition-colors hover:text-[var(--text)]"
+            className="flex h-9 w-9 items-center justify-center rounded-xl border border-[var(--border)] text-[var(--text-muted)] transition-colors hover:text-[var(--text)]"
             aria-label="Close workspace"
           >
             ✕
@@ -47,24 +70,44 @@ export function Sidebar({ open, onClose, mobile = false, fill = false }: Sidebar
       </div>
 
       <div className="scroll-y flex-1 space-y-7 px-4 py-5">
-        <Section title="Workspace">
-          <Row label="Workspace ID" value={roomId ?? '—'} mono />
+        <Section title="Status">
           <Row
             label="Connection"
-            value={
-              !connected ? 'Interrupted' : peerConnected ? 'Secure tunnel' : 'Listening'
-            }
+            value={!connected ? 'Interrupted' : peerConnected ? 'Linked' : 'Waiting'}
           />
-          <Row label="Encryption" value={peerConnected ? 'Active' : 'Pending'} />
-          <Row
-            label="Remote Endpoint"
-            value={peerConnected ? 'Connected' : '—'}
-            mono
-          />
-          <Row label="Started" value={formatStarted(sessionStartedAt)} />
-          <Row label="Uptime" value={elapsed} mono />
+          <Row label="Remote" value={peerConnected ? 'Online' : 'Offline'} />
+          <Row label="Open for" value={elapsed} mono />
           <Row label="Latency" value={latency != null ? `${latency} ms` : '—'} mono />
-          <Row label="Sync" value={health} />
+          <Row label="Notes" value={noteCount ? String(noteCount) : 'None'} mono />
+        </Section>
+
+        <Section title="Pad">
+          <motion.button
+            type="button"
+            whileTap={noteCount && connected ? { scale: 0.98 } : undefined}
+            disabled={!noteCount || !connected || clearing}
+            onClick={onClearPad}
+            className={`w-full rounded-xl border px-3 py-3 text-left text-xs transition-colors ${
+              confirmClear
+                ? 'border-[color-mix(in_srgb,var(--danger)_45%,var(--border))] bg-[color-mix(in_srgb,var(--danger)_10%,var(--bg))] text-[var(--danger)]'
+                : noteCount && connected
+                  ? 'border-[var(--border)] bg-[var(--bg)] text-[var(--text)] hover:border-[var(--border-strong)]'
+                  : 'border-[var(--border)] bg-[var(--bg)] text-[var(--text-faint)] opacity-50'
+            }`}
+          >
+            <span className="block font-medium">
+              {clearing
+                ? 'Clearing…'
+                : confirmClear
+                  ? 'Tap again to clear all notes'
+                  : 'Clear all notes'}
+            </span>
+            <span className="mt-1 block text-[10px] tracking-wide text-[var(--text-faint)]">
+              {confirmClear
+                ? 'Removes the pad for both of you'
+                : 'Or type /clear in the composer'}
+            </span>
+          </motion.button>
         </Section>
 
         <Section title="Theme">
@@ -79,7 +122,7 @@ export function Sidebar({ open, onClose, mobile = false, fill = false }: Sidebar
                   onClick={() => setThemeId(theme.id)}
                   className={`flex w-full items-center justify-between rounded-xl border px-3 py-2.5 text-left text-xs transition-all duration-200 ${
                     active
-                      ? 'border-[color-mix(in_srgb,var(--accent)_40%,var(--border))] bg-[var(--accent-soft)] text-[var(--accent)] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--accent)_12%,transparent)]'
+                      ? 'border-[color-mix(in_srgb,var(--accent)_40%,var(--border))] bg-[var(--accent-soft)] text-[var(--accent)]'
                       : 'border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--border-strong)] hover:bg-[var(--bg)] hover:text-[var(--text)]'
                   }`}
                 >
@@ -159,30 +202,11 @@ function Row({
   mono?: boolean;
 }) {
   return (
-    <motion.div
-      layout
-      className="flex items-center justify-between gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg)] px-3 py-2.5 transition-colors hover:border-[var(--border-strong)]"
-    >
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg)] px-3 py-2.5">
       <span className="text-xs text-[var(--text-muted)]">{label}</span>
-      <motion.span
-        key={value}
-        initial={{ opacity: 0.5 }}
-        animate={{ opacity: 1 }}
-        className={`truncate text-xs text-[var(--text)] ${mono ? 'font-mono' : ''}`}
-      >
+      <span className={`truncate text-xs text-[var(--text)] ${mono ? 'font-mono' : ''}`}>
         {value}
-      </motion.span>
-    </motion.div>
+      </span>
+    </div>
   );
-}
-
-function formatStarted(ts: number | null): string {
-  if (!ts) return '—';
-  return new Intl.DateTimeFormat(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(new Date(ts));
 }

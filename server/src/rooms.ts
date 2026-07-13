@@ -177,6 +177,12 @@ export class RoomStore {
     return room.messages.length < before;
   }
 
+  clearMessages(room: Room): number {
+    const count = room.messages.length;
+    room.messages = [];
+    return count;
+  }
+
   markSeen(room: Room, messageIds: string[], viewerRole: UserRole): ChatMessage[] {
     const updated: ChatMessage[] = [];
     const idSet = new Set(messageIds);

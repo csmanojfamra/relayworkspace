@@ -65,6 +65,14 @@ export function MessageStream({
   });
 
   useEffect(() => {
+    if (messages.length === 0) {
+      setRevealedIds(new Set());
+      for (const timer of stageTimers.current.values()) window.clearTimeout(timer);
+      stageTimers.current.clear();
+    }
+  }, [messages.length]);
+
+  useEffect(() => {
     for (const message of messages) {
       const mine = message.senderRole === role;
       if (mine) {
@@ -154,7 +162,7 @@ export function MessageStream({
               </p>
               <p className="mt-2 text-[12px] tracking-wide text-[var(--text-faint)]">
                 {peerConnected
-                  ? 'Notes appear here for both of you.'
+                  ? 'Notes appear here for both of you. Type /clear to wipe the pad.'
                   : connected
                     ? 'They’ll sync when the remote joins.'
                     : 'Hang on while Relay restores the tunnel.'}

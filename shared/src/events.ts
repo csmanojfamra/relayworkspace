@@ -8,6 +8,8 @@ export const SocketEvents = {
   RECEIVE_MESSAGE: 'receive-message',
   MESSAGE_UPDATED: 'message-updated',
   MESSAGE_DELETED: 'message-deleted',
+  CLEAR_MESSAGES: 'clear-messages',
+  MESSAGES_CLEARED: 'messages-cleared',
   TYPING_START: 'typing-start',
   TYPING_STOP: 'typing-stop',
   SEEN: 'seen',

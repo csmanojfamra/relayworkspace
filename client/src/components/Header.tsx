@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import { useEffect, useState } from 'react';
 import { useSession } from '@/hooks/useSession';
 import { useElapsed } from '@/hooks/useUtilities';
 import { useIsMobile } from '@/hooks/useMediaQuery';
@@ -9,10 +10,19 @@ interface HeaderProps {
 }
 
 export function Header({ onOpenSidebar, showMenu }: HeaderProps) {
-  const { peerConnected, connected, sessionStartedAt, latency } = useSession();
+  const { peerConnected, connected, sessionStartedAt, latency, messages, clearMessages } =
+    useSession();
   const elapsed = useElapsed(sessionStartedAt);
   const isMobile = useIsMobile();
   const liveLatency = connected ? latency : null;
+  const [confirmClear, setConfirmClear] = useState(false);
+  const canClear = connected && messages.length > 0;
+
+  useEffect(() => {
+    if (!confirmClear) return;
+    const id = window.setTimeout(() => setConfirmClear(false), 3500);
+    return () => window.clearTimeout(id);
+  }, [confirmClear]);
 
   const secure = connected && peerConnected;
   const statusLabel = !connected
@@ -20,6 +30,15 @@ export function Header({ onOpenSidebar, showMenu }: HeaderProps) {
     : peerConnected
       ? 'Shared notes'
       : 'Waiting for remote';
+
+  const onClear = () => {
+    if (!canClear) return;
+    if (!confirmClear) {
+      setConfirmClear(true);
+      return;
+    }
+    clearMessages(() => setConfirmClear(false));
+  };
 
   return (
     <header className="notes-chrome shrink-0 border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_88%,transparent)] backdrop-blur-xl">
@@ -61,34 +80,59 @@ export function Header({ onOpenSidebar, showMenu }: HeaderProps) {
           </div>
         </div>
 
-        {isMobile ? (
-          <div className="flex shrink-0 items-center gap-2.5 text-[11px] tabular-nums text-[var(--text-muted)]">
-            <span
-              className={
-                peerConnected
-                  ? 'text-[var(--accent)]'
-                  : connected
-                    ? 'text-[var(--text-faint)]'
-                    : 'text-[var(--danger)]'
-              }
+        <div className="flex shrink-0 items-center gap-2 sm:gap-4">
+          {canClear && (
+            <motion.button
+              type="button"
+              whileTap={{ scale: 0.96 }}
+              onClick={onClear}
+              aria-label={confirmClear ? 'Confirm clear all notes' : 'Clear all notes'}
+              title={confirmClear ? 'Tap again to confirm' : 'Clear all notes'}
+              className={`rounded-xl border px-2.5 py-1.5 text-[11px] tracking-wide transition-colors ${
+                confirmClear
+                  ? 'border-[color-mix(in_srgb,var(--danger)_40%,var(--border))] text-[var(--danger)]'
+                  : 'border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]'
+              }`}
             >
-              {peerConnected ? 'Remote on' : 'Remote off'}
-            </span>
-            {liveLatency != null && (
-              <span className="font-mono text-[10px] text-[var(--text-faint)]">{liveLatency}ms</span>
-            )}
-          </div>
-        ) : (
-          <div className="flex shrink-0 items-center gap-5">
-            <Meta label="Remote" value={peerConnected ? 'Connected' : 'Offline'} emphasize={peerConnected} />
-            <Meta
-              label="Latency"
-              value={liveLatency != null ? `${liveLatency} ms` : '—'}
-              className="hidden md:flex"
-            />
-            <Meta label="Open" value={elapsed} className="hidden lg:flex" />
-          </div>
-        )}
+              {confirmClear ? 'Confirm clear' : 'Clear'}
+            </motion.button>
+          )}
+
+          {isMobile ? (
+            <div className="flex items-center gap-2.5 text-[11px] tabular-nums text-[var(--text-muted)]">
+              <span
+                className={
+                  peerConnected
+                    ? 'text-[var(--accent)]'
+                    : connected
+                      ? 'text-[var(--text-faint)]'
+                      : 'text-[var(--danger)]'
+                }
+              >
+                {peerConnected ? 'Remote on' : 'Remote off'}
+              </span>
+              {liveLatency != null && (
+                <span className="font-mono text-[10px] text-[var(--text-faint)]">
+                  {liveLatency}ms
+                </span>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center gap-5">
+              <Meta
+                label="Remote"
+                value={peerConnected ? 'Connected' : 'Offline'}
+                emphasize={peerConnected}
+              />
+              <Meta
+                label="Latency"
+                value={liveLatency != null ? `${liveLatency} ms` : '—'}
+                className="hidden md:flex"
+              />
+              <Meta label="Open" value={elapsed} className="hidden lg:flex" />
+            </div>
+          )}
+        </div>
       </div>
     </header>
   );
