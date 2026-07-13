@@ -19,6 +19,7 @@ export function CommandInput({ onSend, onTyping, disabled }: CommandInputProps) 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const typingRef = useRef(false);
   const stopTimer = useRef<number | null>(null);
+  const canExecute = Boolean(value.trim()) && !disabled;
 
   useEffect(() => {
     if (disabled) return;
@@ -80,42 +81,66 @@ export function CommandInput({ onSend, onTyping, disabled }: CommandInputProps) 
       className="terminal-prompt font-mono pt-7"
       onMouseDown={(e) => {
         if (disabled) return;
-        if ((e.target as HTMLElement).closest('textarea')) return;
+        // Keep focus on prompt unless tapping the control itself or the field.
+        if ((e.target as HTMLElement).closest('textarea, button')) return;
         e.preventDefault();
         textareaRef.current?.focus();
       }}
     >
-      <div className="flex items-start gap-2">
-        <p className="shrink-0 select-none pt-[2px] font-mono text-[12px] leading-7 tracking-tight">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-2">
+        <p className="shrink-0 select-none font-mono text-[12px] leading-7 tracking-tight sm:pt-[2px]">
           <span style={{ color: 'var(--me)' }}>relay@local</span>
           <span className="text-[var(--text-faint)]">:~/workspace</span>
           <span className="ml-1.5 text-[var(--accent)]">❯</span>
         </p>
-        <div className="relative min-w-0 flex-1">
-          <textarea
-            ref={textareaRef}
-            value={value}
-            disabled={disabled}
-            onChange={(e) => handleChange(e.target.value)}
-            onKeyDown={onKeyDown}
-            rows={1}
-            spellCheck={false}
-            autoCapitalize="off"
-            autoCorrect="off"
-            autoComplete="off"
-            aria-label="Terminal prompt"
-            className="max-h-[160px] min-h-[28px] w-full resize-none overflow-y-auto bg-transparent p-0 font-mono text-[13px] leading-7 text-[var(--text)] outline-none sm:text-sm"
-            style={{
-              fontFamily: 'inherit',
-              caretColor: value || disabled ? 'var(--cursor)' : 'transparent',
-            }}
-          />
-          {!value && !disabled && (
-            <span
-              className="blink pointer-events-none absolute left-0 top-[6px] inline-block h-[15px] w-[7px] bg-[var(--cursor)]"
-              aria-hidden
+
+        <div className="flex min-w-0 flex-1 items-start gap-2">
+          <div className="relative min-w-0 flex-1">
+            <textarea
+              ref={textareaRef}
+              value={value}
+              disabled={disabled}
+              onChange={(e) => handleChange(e.target.value)}
+              onKeyDown={onKeyDown}
+              rows={1}
+              spellCheck={false}
+              autoCapitalize="off"
+              autoCorrect="off"
+              autoComplete="off"
+              enterKeyHint="done"
+              aria-label="Terminal prompt"
+              className="max-h-[160px] min-h-[28px] w-full resize-none overflow-y-auto bg-transparent p-0 font-mono text-[13px] leading-7 text-[var(--text)] outline-none sm:text-sm"
+              style={{
+                fontFamily: 'inherit',
+                caretColor: value || disabled ? 'var(--cursor)' : 'transparent',
+              }}
             />
-          )}
+            {!value && !disabled && (
+              <span
+                className="blink pointer-events-none absolute left-0 top-[6px] inline-block h-[15px] w-[7px] bg-[var(--cursor)]"
+                aria-hidden
+              />
+            )}
+          </div>
+
+          {/*
+            Mobile execute control — shell return key, not a chat Send.
+            Hidden from sm+ where physical Enter is the natural path.
+          */}
+          <motion.button
+            type="submit"
+            disabled={!canExecute}
+            whileTap={canExecute ? { scale: 0.94 } : undefined}
+            aria-label="Execute entry"
+            title="Execute"
+            className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md border font-mono text-[13px] leading-none transition-colors duration-150 sm:hidden ${
+              canExecute
+                ? 'border-[color-mix(in_srgb,var(--accent)_35%,var(--border))] bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] text-[var(--accent)]'
+                : 'border-[var(--border)] text-[var(--text-faint)] opacity-40'
+            }`}
+          >
+            ↵
+          </motion.button>
         </div>
       </div>
 
