@@ -7,6 +7,10 @@
   "ignoreCommand": "exit 1",
   "rewrites": [
     {
+      "source": "/health",
+      "destination": "https://web-production-76c64.up.railway.app/health"
+    },
+    {
       "source": "/socket.io",
       "destination": "https://web-production-76c64.up.railway.app/socket.io/"
     },
@@ -19,7 +23,7 @@
       "destination": "https://web-production-76c64.up.railway.app/socket.io/:path*"
     },
     {
-      "source": "/((?!socket\\.io(?:/|$)).*)",
+      "source": "/((?!socket\\.io(?:/|$)|health$).*)",
       "destination": "/index.html"
     }
   ]

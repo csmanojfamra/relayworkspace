@@ -156,14 +156,26 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
     let connectFailures = 0;
     const attemptRejoin = () => {
+      const phase = phaseRef.current;
+      // Never rejoin while joining via invite — that path uses JOIN_ROOM / token.
+      if (phase === 'joining' || phase === 'waiting-approval') return;
+
       const persisted = loadPersistedSession();
       const activeRoom = roomIdRef.current ?? persisted?.roomId;
       const activeKey = sessionKeyRef.current ?? persisted?.sessionKey;
       if (!activeRoom || !activeKey) return;
+
+      // Persisted seat must match the room we are restoring.
+      if (persisted && persisted.roomId !== activeRoom) {
+        sessionKeyRef.current = null;
+        savePersistedSession(null);
+        return;
+      }
+
       // Only restore when we already have an active workspace phase, or a
       // persisted session from this browser tab. Never surface a hard error
       // if the ephemeral room is already gone.
-      if (!['host-ready', 'chat', 'booting'].includes(phaseRef.current) && !persisted) return;
+      if (!['host-ready', 'chat', 'booting'].includes(phase) && !persisted) return;
 
       socket.emit(
         SocketEvents.REJOIN,
@@ -172,8 +184,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           if ('code' in result) {
             // Stale session after server restart / grace expiry / both left too long.
             sessionKeyRef.current = null;
-            roomIdRef.current = null;
             savePersistedSession(null);
+            // Keep invite roomId if the user is mid-join on another code path.
+            if (
+              phaseRef.current !== 'joining' &&
+              phaseRef.current !== 'waiting-approval'
+            ) {
+              roomIdRef.current = null;
+            }
             if (
               phaseRef.current === 'chat' ||
               phaseRef.current === 'booting' ||
@@ -230,7 +248,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         (result: { status: 'pending' } | JoinResult | ErrorPayload) => {
           if ('code' in result) {
             // Room gone after server restart — surface it.
-            if (result.code === 'ROOM_NOT_FOUND' || result.code === 'EXPIRED_INVITE') {
+            if (result.code === 'ROOM_NOT_FOUND') {
+              setError({
+                code: 'ROOM_NOT_FOUND',
+                message:
+                  'Workspace not found. Ask the host to open Relay, create a new pad, and share a fresh invite.',
+              });
+              setPhase('error');
+              return;
+            }
+            if (result.code === 'EXPIRED_INVITE') {
               setError(result);
               setPhase('error');
             }
@@ -445,13 +472,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const beginJoin = useCallback(
     (targetRoomId: string, token: string) => {
+      const normalizedId = targetRoomId.trim().toUpperCase();
+      const normalizedToken = token.trim();
       const socket = ensureSocket();
       setError(null);
       setPhase('joining');
-      setRoomId(targetRoomId);
-      roomIdRef.current = targetRoomId;
-      setInviteToken(token);
-      inviteTokenRef.current = token;
+      // Fresh invite join — drop any prior seat so REJOIN cannot race JOIN_ROOM.
+      sessionKeyRef.current = null;
+      savePersistedSession(null);
+      setRole(null);
+      setPeerConnected(false);
+      setJoinRequest(null);
+      setMessages([]);
+      setRoomId(normalizedId);
+      roomIdRef.current = normalizedId;
+      setInviteToken(normalizedToken);
+      inviteTokenRef.current = normalizedToken;
       setBootCompleteState(false);
 
       let settled = false;
@@ -459,9 +495,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const emitJoin = () => {
         const active = socketRef.current ?? socket;
         if (!active.connected) return;
+        // Keep refs aligned even if a stale rejoin ack tried to clear them.
+        roomIdRef.current = normalizedId;
+        inviteTokenRef.current = normalizedToken;
         active.emit(
           SocketEvents.JOIN_ROOM,
-          { roomId: targetRoomId, token },
+          { roomId: normalizedId, token: normalizedToken },
           (result: { status: 'pending' } | JoinResult | ErrorPayload) => {
             settled = true;
             if ('code' in result) {
@@ -471,6 +510,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                 /pending/i.test(result.message ?? '')
               ) {
                 setPhase('waiting-approval');
+                return;
+              }
+              if (result.code === 'ROOM_NOT_FOUND') {
+                setError({
+                  code: 'ROOM_NOT_FOUND',
+                  message:
+                    'Workspace not found. Ask the host to open Relay, create a new pad, and share a fresh invite.',
+                });
+                setPhase('error');
                 return;
               }
               setError(result);

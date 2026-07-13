@@ -169,7 +169,9 @@ export function registerSocketHandlers(io: Server): void {
         ack?: (result: { status: 'pending' } | JoinResult | ErrorPayload) => void
       ) => {
         try {
-          const { roomId, token } = payload;
+          const { roomId: rawRoomId, token: rawToken } = payload;
+          const roomId = rawRoomId?.trim().toUpperCase() ?? '';
+          const token = rawToken?.trim() ?? '';
           const room = roomStore.getRoom(roomId);
 
           if (!room) {
@@ -262,7 +264,7 @@ export function registerSocketHandlers(io: Server): void {
         payload: { roomId: string; token: string },
         ack?: (result: { status: 'pending' } | ErrorPayload) => void
       ) => {
-        const room = roomStore.getRoom(payload.roomId);
+        const room = roomStore.getRoom(payload.roomId?.trim().toUpperCase() ?? '');
         if (!room) {
           const error: ErrorPayload = {
             code: 'ROOM_NOT_FOUND',
@@ -293,7 +295,7 @@ export function registerSocketHandlers(io: Server): void {
           return;
         }
 
-        if (room.inviteToken !== payload.token) {
+        if (room.inviteToken !== payload.token?.trim()) {
           const error: ErrorPayload = {
             code: 'INVALID_INVITE',
             message: 'Invalid Invite',
