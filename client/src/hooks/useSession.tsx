@@ -313,6 +313,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      // Host clicked an outdated authorize card — stay in the workspace.
+      if (
+        payload.code === 'EXPIRED_INVITE' &&
+        (phaseRef.current === 'host-ready' || phaseRef.current === 'chat')
+      ) {
+        setJoinRequest(null);
+        return;
+      }
+
       // Ignore stale restore noise — handled in rejoin ack.
       if (
         payload.code === 'ROOM_NOT_FOUND' &&

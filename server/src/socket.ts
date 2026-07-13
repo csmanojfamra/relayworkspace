@@ -386,7 +386,11 @@ export function registerSocketHandlers(io: Server): void {
 
         const room = roomStore.getRoom(binding.roomId);
         if (!room?.pendingRequest || room.pendingRequest.requestId !== payload.requestId) {
-          emitError(socket, { code: 'EXPIRED_INVITE', message: 'Request is no longer valid.' });
+          // Stale authorize card — keep host in session, just drop the request.
+          if (room) {
+            roomStore.clearPendingRequest(room);
+            socket.emit(SocketEvents.ROOM_STATE, roomStore.toPublicState(room, 'host'));
+          }
           ack?.(false);
           return;
         }
