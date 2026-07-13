@@ -5,33 +5,41 @@
     Consolas, monospace;
   --font-mono: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco,
     Consolas, monospace;
+  --font-note: 'Source Serif 4', 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
   --font-family-sans: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo,
     Monaco, Consolas, monospace;
   --font-family-mono: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo,
     Monaco, Consolas, monospace;
+  --font-family-note: 'Source Serif 4', 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia,
+    serif;
 }
 
 :root {
   color-scheme: dark;
-  --bg: #0a0a0b;
-  --bg-elevated: #111214;
-  --bg-soft: #16181c;
-  --panel: rgba(17, 18, 20, 0.88);
-  --border: rgba(255, 255, 255, 0.08);
-  --border-strong: rgba(255, 255, 255, 0.14);
-  --text: #e8eaed;
-  --text-muted: #8b919a;
-  --text-faint: #5c6370;
+  --bg: #0c0c0e;
+  --bg-elevated: #141417;
+  --bg-soft: #1a1a1f;
+  --panel: rgba(20, 20, 23, 0.92);
+  --border: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.12);
+  --text: #ebe7e0;
+  --text-muted: #9a958c;
+  --text-faint: #6a665e;
   --accent: #7cffb2;
   --accent-soft: rgba(124, 255, 178, 0.12);
   --danger: #ff6b7a;
   --warning: #f5c542;
   --me: #9ad4ff;
   --peer: #7cffb2;
-  --cursor: #7cffb2;
-  --glow: rgba(124, 255, 178, 0.14);
-  --shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
-  --scrollbar: rgba(255, 255, 255, 0.12);
+  --cursor: #ebe7e0;
+  --glow: rgba(124, 255, 178, 0.08);
+  --shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  --scrollbar: rgba(255, 255, 255, 0.1);
+  --note: #1c1c21;
+  --note-local: #1a222c;
+  --note-remote: #1a2420;
+  --note-border: rgba(255, 255, 255, 0.06);
+  --note-shadow: 0 4px 24px rgba(0, 0, 0, 0.28);
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -103,11 +111,44 @@ a {
   height: var(--vv-height, 100dvh);
   max-height: var(--vv-height, 100dvh);
   overflow: hidden;
-  background:
-    radial-gradient(1100px 520px at 12% -8%, var(--glow), transparent 58%),
-    radial-gradient(800px 420px at 100% 0%, rgba(255, 255, 255, 0.025), transparent 42%),
-    var(--bg);
+  background: var(--bg);
   transition: height 120ms ease-out;
+}
+
+.notes-pad {
+  background:
+    radial-gradient(900px 480px at 50% -10%, rgba(255, 255, 255, 0.03), transparent 55%),
+    var(--bg);
+}
+
+.note-card {
+  background: var(--note);
+  border: 1px solid var(--note-border);
+  border-radius: 1rem;
+  box-shadow: var(--note-shadow);
+}
+
+.note-card-local {
+  background: var(--note-local);
+  border-left: 2px solid color-mix(in srgb, var(--me) 55%, transparent);
+}
+
+.note-card-remote {
+  background: var(--note-remote);
+  border-left: 2px solid color-mix(in srgb, var(--peer) 55%, transparent);
+}
+
+.note-body {
+  font-family: var(--font-note);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+.note-composer {
+  background: var(--note);
+  border: 1px solid var(--note-border);
+  border-radius: 1rem;
+  box-shadow: var(--note-shadow);
 }
 
 .glass {
@@ -201,7 +242,8 @@ a {
     transform 180ms ease;
 }
 
-.terminal-prompt textarea {
+.terminal-prompt textarea,
+.note-composer textarea {
   field-sizing: content;
 }
 

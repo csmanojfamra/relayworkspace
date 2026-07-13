@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MESSAGE_TTL_MS, type ChatMessage, type UserRole } from '@terminalchat/shared';
-import { formatCompactTime, formatUtcTime, promptLabel, shortPromptLabel } from '@/lib/utils';
+import { formatCompactTime, formatUtcTime, shortPromptLabel } from '@/lib/utils';
 import { useTerminalTimeline } from '@/hooks/useTerminalTimeline';
 import { useCountdown } from '@/hooks/useCountdown';
 import { useIsMobile } from '@/hooks/useMediaQuery';
@@ -81,7 +81,7 @@ export function MessageStream({
 
       if (revealedIds.has(message.id) || stageTimers.current.has(message.id)) continue;
 
-      const delay = 280 + Math.floor(Math.random() * 220);
+      const delay = 240 + Math.floor(Math.random() * 200);
       const timer = window.setTimeout(() => {
         stageTimers.current.delete(message.id);
         setRevealedIds((prev) => {
@@ -116,7 +116,6 @@ export function MessageStream({
     stickToBottom.current = distance < NEAR_BOTTOM_PX;
   };
 
-  // Only follow new entries / staging when the reader is already near the bottom.
   useEffect(() => {
     const root = scrollRef.current;
     if (!root || !stickToBottom.current) return;
@@ -137,70 +136,58 @@ export function MessageStream({
   }, [messages, role, onVisible, revealedIds]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col font-mono">
+    <div className="notes-pad flex h-full min-h-0 flex-col">
       <div
         ref={scrollRef}
         onScroll={onScroll}
-        className="scroll-y terminal-scroll min-h-0 flex-1 px-3 py-3 sm:px-10 sm:py-5"
-        onMouseDown={(e) => {
-          if (isMobile) return;
-          const target = e.target as HTMLElement;
-          if (target.closest('textarea, button, a, input')) return;
-          const prompt = document.querySelector('.terminal-prompt textarea');
-          if (prompt instanceof HTMLTextAreaElement && !prompt.disabled) {
-            e.preventDefault();
-            prompt.focus();
-          }
-        }}
+        className="scroll-y terminal-scroll min-h-0 flex-1 px-3 py-4 sm:px-8 sm:py-6"
       >
-        <div className="mx-auto w-full max-w-[980px]">
+        <div className="mx-auto flex w-full max-w-[720px] flex-col gap-3 sm:gap-3.5">
           {displayItems.length === 0 && !typingLine && !(ambient && !isMobile) && (
-            <p className="mb-3 font-mono text-[11px] tracking-wide text-[var(--text-faint)] opacity-65">
+            <p className="px-1 font-mono text-[11px] tracking-wide text-[var(--text-faint)] opacity-70">
               {peerConnected
-                ? 'Awaiting endpoint activity.'
+                ? 'Shared pad is empty. Take a note.'
                 : connected
-                  ? 'Remote offline — you can still write.'
+                  ? 'You can write notes while the remote endpoint is offline.'
                   : 'Waiting for connection…'}
             </p>
           )}
 
-          <div className="space-y-0">
-            <AnimatePresence initial={false}>
-              {displayItems.map((item) => {
-                if (item.kind === 'system') {
-                  return <SystemEventLine key={item.key} event={item.event} />;
-                }
-                if (item.staged) {
-                  return <PreparingOutput key={`prep-${item.key}`} />;
-                }
-                return (
-                  <TerminalEntry
-                    key={item.key}
-                    message={item.message}
-                    mine={item.mine}
-                    compact={isMobile}
-                  />
-                );
-              })}
-            </AnimatePresence>
+          <AnimatePresence initial={false}>
+            {displayItems.map((item) => {
+              if (item.kind === 'system') {
+                return <SystemEventLine key={item.key} event={item.event} />;
+              }
+              if (item.staged) {
+                return <PreparingOutput key={`prep-${item.key}`} />;
+              }
+              return (
+                <NoteCard
+                  key={item.key}
+                  message={item.message}
+                  mine={item.mine}
+                  compact={isMobile}
+                />
+              );
+            })}
+          </AnimatePresence>
 
-            {typingLine && !stagingRemote && <TypingEvent line={typingLine} />}
+          {typingLine && !stagingRemote && <TypingEvent line={typingLine} />}
 
-            {!isMobile && ambient && !typingLine && (
-              <SystemEventLine key={ambient.id} event={ambient} compact />
-            )}
+          {!isMobile && ambient && !typingLine && (
+            <SystemEventLine key={ambient.id} event={ambient} compact />
+          )}
 
-            {peerConnected === false && connected && displayItems.length > 0 && (
-              <p className="py-2 font-mono text-[10px] tracking-wide text-[var(--text-faint)] opacity-50">
-                Remote offline — entries sync when they return.
-              </p>
-            )}
-          </div>
+          {peerConnected === false && connected && displayItems.length > 0 && (
+            <p className="px-1 py-1 font-mono text-[10px] tracking-wide text-[var(--text-faint)] opacity-50">
+              Remote offline — notes sync when they return.
+            </p>
+          )}
         </div>
       </div>
 
-      <div className="shrink-0 border-t border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_94%,transparent)] px-3 py-2.5 pb-[max(10px,var(--safe-bottom))] backdrop-blur-md sm:px-10 sm:py-3">
-        <div className="mx-auto w-full max-w-[980px]">
+      <div className="shrink-0 border-t border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_96%,transparent)] px-3 py-3 pb-[max(12px,var(--safe-bottom))] backdrop-blur-md sm:px-8">
+        <div className="mx-auto w-full max-w-[720px]">
           <CommandInput
             onSend={(value) => {
               stickToBottom.current = true;
@@ -215,7 +202,7 @@ export function MessageStream({
   );
 }
 
-function TerminalEntry({
+function NoteCard({
   message,
   mine,
   compact = false,
@@ -226,9 +213,7 @@ function TerminalEntry({
 }) {
   const remaining = useCountdown(message.deleteAt);
   const bothSeen = message.seenByHost && message.seenByGuest;
-  const endpoint = compact
-    ? shortPromptLabel(mine ? 'me' : 'friend')
-    : promptLabel(mine ? 'me' : 'friend');
+  const author = shortPromptLabel(mine ? 'me' : 'friend');
   const stamp = compact ? formatCompactTime(message.timestamp) : formatUtcTime(message.timestamp);
   const hasTtl = Boolean(message.deleteAt && remaining);
 
@@ -239,40 +224,38 @@ function TerminalEntry({
 
   return (
     <motion.article
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
       exit={{
         opacity: 0,
         height: 0,
         overflow: 'hidden',
+        marginBottom: 0,
         transition: { duration: 0.28, ease: [0.22, 1, 0.36, 1] },
       }}
-      transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-      className={`font-mono ${compact ? 'py-2.5' : 'py-3.5'}`}
+      transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+      className={`note-card ${mine ? 'note-card-local' : 'note-card-remote'} px-4 py-3.5 sm:px-5 sm:py-4`}
     >
-      <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
-        <p
-          className="font-mono text-[10px] font-medium uppercase tracking-[0.12em]"
-          style={{ color: mine ? 'var(--me)' : 'var(--peer)' }}
-        >
-          {endpoint}
-        </p>
-        <p className="font-mono text-[10px] tabular-nums tracking-wide text-[var(--text-faint)] opacity-45">
-          {stamp}
-        </p>
-      </div>
-
       <p
-        className={`mt-1 whitespace-pre-wrap break-words font-mono leading-6 text-[var(--text)] ${
-          compact ? 'text-[15px]' : 'text-[14px] sm:text-[15px]'
+        className={`note-body whitespace-pre-wrap break-words leading-7 text-[var(--text)] ${
+          compact ? 'text-[16px]' : 'text-[16px] sm:text-[17px]'
         }`}
       >
         {message.content}
       </p>
 
-      {(hasTtl || bothSeen || message.delivered) && (
-        <div className="mt-1 flex items-center gap-2 opacity-30">
-          <p className="font-mono text-[9px] tracking-wide text-[var(--text-faint)]">
+      <div className="mt-3 flex flex-wrap items-center gap-x-2.5 gap-y-1">
+        <span
+          className="font-mono text-[10px] font-medium uppercase tracking-[0.12em]"
+          style={{ color: mine ? 'var(--me)' : 'var(--peer)' }}
+        >
+          {author}
+        </span>
+        <span className="font-mono text-[10px] tabular-nums text-[var(--text-faint)] opacity-70">
+          {stamp}
+        </span>
+        {(hasTtl || bothSeen || message.delivered) && (
+          <span className="ml-auto flex items-center gap-2 font-mono text-[9px] text-[var(--text-faint)] opacity-45">
             {hasTtl && remaining ? (
               <>
                 TTL <span className="tabular-nums">{remaining}</span>
@@ -280,27 +263,28 @@ function TerminalEntry({
             ) : bothSeen ? (
               'TTL armed'
             ) : (
-              'sync pending'
+              'syncing'
             )}
-          </p>
-          {ttlProgress != null && (
-            <span
-              className="h-px w-8 overflow-hidden bg-[color-mix(in_srgb,var(--border)_80%,transparent)]"
-              aria-hidden
-            >
+            {ttlProgress != null && (
               <span
-                className="block h-full origin-left bg-[var(--accent)] opacity-40"
-                style={{ transform: `scaleX(${ttlProgress})` }}
-              />
-            </span>
-          )}
-        </div>
-      )}
+                className="h-px w-8 overflow-hidden bg-[color-mix(in_srgb,var(--border)_80%,transparent)]"
+                aria-hidden
+              >
+                <span
+                  className="block h-full origin-left bg-[var(--accent)] opacity-40"
+                  style={{ transform: `scaleX(${ttlProgress})` }}
+                />
+              </span>
+            )}
+          </span>
+        )}
+      </div>
     </motion.article>
   );
 }
 
-function buildStream(  messages: ChatMessage[],
+function buildStream(
+  messages: ChatMessage[],
   events: ReturnType<typeof useTerminalTimeline>['events'],
   role: UserRole | null,
   revealedIds: Set<string>

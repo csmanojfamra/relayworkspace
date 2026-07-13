@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { systemPrefix, type SystemEvent, type SystemTone } from '@/lib/terminalEvents';
+import type { SystemEvent, SystemTone } from '@/lib/terminalEvents';
 
 const toneClass: Record<SystemTone, string> = {
-  ok: 'text-[var(--accent)]',
-  info: 'text-[var(--me)]',
+  ok: 'text-[var(--text-faint)]',
+  info: 'text-[var(--text-faint)]',
   warn: 'text-[var(--warning)]',
   idle: 'text-[var(--text-faint)]',
 };
@@ -14,73 +14,56 @@ interface SystemEventLineProps {
   compact?: boolean;
 }
 
+/** Quiet pad meta — Apple Notes sidebar energy, not terminal logs. */
 export function SystemEventLine({ event, compact = false }: SystemEventLineProps) {
   const lines = [event.text, ...(event.detail ?? [])];
 
   return (
     <motion.div
       initial={{ opacity: 0 }}
-      animate={{ opacity: compact ? 0.32 : 0.58 }}
-      transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-      className="font-mono py-1"
+      animate={{ opacity: compact ? 0.4 : 0.55 }}
+      transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+      className="px-1 py-1"
     >
-      <div className={`space-y-0.5 text-[10px] tracking-wide sm:text-[11px] ${toneClass[event.tone]}`}>
+      <div className={`space-y-0.5 font-mono text-[10px] tracking-wide ${toneClass[event.tone]}`}>
         {lines.map((line, i) => (
-          <div key={`${event.id}-${i}`} className="flex items-start gap-2">
-            <span className="w-[3.25rem] shrink-0 select-none text-right opacity-60">
-              {i === 0 ? systemPrefix(event.tone) : ''}
-            </span>
-            <span className={i === 0 ? undefined : 'opacity-70'}>{line}</span>
-          </div>
+          <p key={`${event.id}-${i}`} className={i === 0 ? undefined : 'opacity-75'}>
+            {line}
+          </p>
         ))}
       </div>
     </motion.div>
   );
 }
 
-/** Quiet receive stage — remote entries only. */
+/** Remote note arriving — brief, calm. */
 export function PreparingOutput() {
   const [phase, setPhase] = useState(0);
 
   useEffect(() => {
-    const t1 = window.setTimeout(() => setPhase(1), 140);
-    const t2 = window.setTimeout(() => setPhase(2), 280);
-    return () => {
-      window.clearTimeout(t1);
-      window.clearTimeout(t2);
-    };
+    const t1 = window.setTimeout(() => setPhase(1), 160);
+    return () => window.clearTimeout(t1);
   }, []);
 
-  const label =
-    phase === 0
-      ? 'Receiving payload...'
-      : phase === 1
-        ? 'Integrity verified.'
-        : 'Rendering output...';
-
   return (
-    <div className="font-mono py-3.5">
-      <p
-        className="text-[10px] font-medium uppercase tracking-[0.14em]"
-        style={{ color: 'var(--peer)' }}
-      >
-        REMOTE ENDPOINT
+    <div className="note-card note-card-remote px-4 py-3.5 opacity-70 sm:px-5">
+      <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--peer)]">
+        Remote
       </p>
-      <p className="mt-1.5 text-[12px] text-[var(--text-muted)] opacity-80">{label}</p>
+      <p className="note-body mt-2 text-[15px] text-[var(--text-muted)]">
+        {phase === 0 ? 'Receiving note…' : 'Opening…'}
+      </p>
     </div>
   );
 }
 
 export function TypingEvent({ line }: { line: string }) {
   return (
-    <div className="font-mono py-3.5">
-      <p
-        className="text-[10px] font-medium uppercase tracking-[0.14em]"
-        style={{ color: 'var(--peer)' }}
-      >
-        REMOTE ENDPOINT
+    <div className="note-card note-card-remote px-4 py-3.5 opacity-75 sm:px-5">
+      <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--peer)]">
+        Remote
       </p>
-      <p className="mt-1.5 text-[12px] text-[var(--text-muted)] opacity-80">{line}</p>
+      <p className="note-body mt-2 text-[15px] text-[var(--text-muted)]">{line || 'Writing…'}</p>
     </div>
   );
 }
@@ -88,7 +71,7 @@ export function TypingEvent({ line }: { line: string }) {
 export function AsciiRule() {
   return (
     <div
-      className="select-none overflow-hidden whitespace-nowrap text-[10px] leading-none tracking-[0.18em] text-[var(--text-faint)] opacity-30"
+      className="select-none overflow-hidden whitespace-nowrap text-[10px] leading-none tracking-[0.18em] text-[var(--text-faint)] opacity-25"
       aria-hidden
     >
       ──────────────────────────────

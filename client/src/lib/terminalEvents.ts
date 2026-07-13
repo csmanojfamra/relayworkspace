@@ -15,9 +15,9 @@ export const PREPARE_LINES = [
 ] as const;
 
 export const TYPING_LINES = [
-  'Receiving payload...',
-  'Synchronizing stream...',
-  'Awaiting commit...',
+  'Writing…',
+  'Writing…',
+  'Writing…',
 ] as const;
 
 export const IDLE_LINES = [

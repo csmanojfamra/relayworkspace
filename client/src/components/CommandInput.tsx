@@ -14,7 +14,7 @@ interface CommandInputProps {
   disabled?: boolean;
 }
 
-/** Warp-style prompt — compact on mobile so the keyboard leaves room to chat. */
+/** Keep-style sticky composer — shared pad, not a terminal prompt. */
 export function CommandInput({ onSend, onTyping, disabled }: CommandInputProps) {
   const [value, setValue] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -22,13 +22,11 @@ export function CommandInput({ onSend, onTyping, disabled }: CommandInputProps) 
   const stopTimer = useRef<number | null>(null);
   const isMobile = useIsMobile();
   const isCoarsePointer = useMediaQuery('(pointer: coarse)');
-  const showExecute = isMobile || isCoarsePointer;
-  const canExecute = Boolean(value.trim()) && !disabled;
+  const canSave = Boolean(value.trim()) && !disabled;
 
   useEffect(() => {
-    // Don't auto-focus on phones — opens the keyboard and steals half the screen.
     if (disabled || isMobile || isCoarsePointer) return;
-    const id = window.setTimeout(() => textareaRef.current?.focus(), 60);
+    const id = window.setTimeout(() => textareaRef.current?.focus(), 80);
     return () => window.clearTimeout(id);
   }, [disabled, isMobile, isCoarsePointer]);
 
@@ -36,7 +34,7 @@ export function CommandInput({ onSend, onTyping, disabled }: CommandInputProps) 
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = '0px';
-    el.style.height = `${Math.min(el.scrollHeight, isMobile ? 120 : 160)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, isMobile ? 128 : 168)}px`;
   }, [value, isMobile]);
 
   const emitTyping = (next: boolean) => {
@@ -83,9 +81,9 @@ export function CommandInput({ onSend, onTyping, disabled }: CommandInputProps) 
     <motion.form
       onSubmit={onSubmit}
       initial={false}
-      animate={{ opacity: disabled ? 0.4 : 1 }}
+      animate={{ opacity: disabled ? 0.45 : 1 }}
       transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-      className="terminal-prompt font-mono"
+      className="note-composer"
       onMouseDown={(e) => {
         if (disabled) return;
         if ((e.target as HTMLElement).closest('textarea, button')) return;
@@ -93,116 +91,51 @@ export function CommandInput({ onSend, onTyping, disabled }: CommandInputProps) 
         textareaRef.current?.focus();
       }}
     >
-      {isMobile ? (
-        <div className="flex items-end gap-2">
-          <span className="mb-2 shrink-0 select-none text-[14px] text-[var(--accent)]">❯</span>
-          <div className="relative min-w-0 flex-1 rounded-xl border border-[var(--border)] bg-[var(--bg-soft)] px-3 py-2.5">
-            <textarea
-              ref={textareaRef}
-              value={value}
-              disabled={disabled}
-              onChange={(e) => handleChange(e.target.value)}
-              onKeyDown={onKeyDown}
-              rows={1}
-              spellCheck={false}
-              autoCapitalize="sentences"
-              autoCorrect="on"
-              autoComplete="off"
-              enterKeyHint="send"
-              placeholder="Write an entry…"
-              aria-label="Terminal prompt"
-              className="max-h-[120px] min-h-[24px] w-full resize-none overflow-y-auto bg-transparent p-0 font-mono text-[15px] leading-6 text-[var(--text)] outline-none placeholder:text-[var(--text-faint)]"
-              style={{
-                fontFamily: 'inherit',
-                caretColor: 'var(--cursor)',
-              }}
-            />
-          </div>
-          <motion.button
-            type="button"
-            disabled={!canExecute}
-            whileTap={canExecute ? { scale: 0.96 } : undefined}
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              submit();
-            }}
-            aria-label="Execute entry"
-            className={`mb-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border font-mono text-[16px] transition-colors ${
-              canExecute
-                ? 'border-[color-mix(in_srgb,var(--accent)_45%,var(--border))] bg-[color-mix(in_srgb,var(--accent)_16%,var(--bg-soft))] text-[var(--accent)]'
-                : 'border-[var(--border)] bg-[var(--bg-soft)] text-[var(--text-faint)]'
-            }`}
-          >
-            ↵
-          </motion.button>
+      <div className="flex items-end gap-2 px-3.5 py-3 sm:px-4 sm:py-3.5">
+        <div className="relative min-w-0 flex-1">
+          <textarea
+            ref={textareaRef}
+            value={value}
+            disabled={disabled}
+            onChange={(e) => handleChange(e.target.value)}
+            onKeyDown={onKeyDown}
+            rows={1}
+            spellCheck
+            autoCapitalize="sentences"
+            autoCorrect="on"
+            autoComplete="off"
+            enterKeyHint="send"
+            placeholder="Take a note…"
+            aria-label="Take a note"
+            className="note-body max-h-[168px] min-h-[28px] w-full resize-none overflow-y-auto bg-transparent p-0 text-[16px] leading-7 text-[var(--text)] outline-none placeholder:text-[var(--text-faint)] sm:text-[17px]"
+            style={{ caretColor: 'var(--cursor)' }}
+          />
         </div>
-      ) : (
-        <div className="flex flex-col gap-2.5 md:flex-row md:items-start md:gap-2">
-          <p className="shrink-0 select-none font-mono text-[12px] leading-7 tracking-tight md:pt-[2px]">
-            <span style={{ color: 'var(--me)' }}>relay@local</span>
-            <span className="text-[var(--text-faint)]">:~/workspace</span>
-            <span className="ml-1.5 text-[var(--accent)]">❯</span>
-          </p>
 
-          <div className="flex min-w-0 flex-1 items-end gap-2.5">
-            <div className="relative min-w-0 flex-1">
-              <textarea
-                ref={textareaRef}
-                value={value}
-                disabled={disabled}
-                onChange={(e) => handleChange(e.target.value)}
-                onKeyDown={onKeyDown}
-                rows={1}
-                spellCheck={false}
-                autoCapitalize="off"
-                autoCorrect="off"
-                autoComplete="off"
-                enterKeyHint="done"
-                aria-label="Terminal prompt"
-                className="max-h-[160px] min-h-[36px] w-full resize-none overflow-y-auto bg-transparent p-0 font-mono text-[13px] leading-7 text-[var(--text)] outline-none sm:text-sm"
-                style={{
-                  fontFamily: 'inherit',
-                  caretColor: value || disabled ? 'var(--cursor)' : 'transparent',
-                }}
-              />
-              {!value && !disabled && (
-                <span
-                  className="blink pointer-events-none absolute left-0 top-[10px] inline-block h-[15px] w-[7px] bg-[var(--cursor)]"
-                  aria-hidden
-                />
-              )}
-            </div>
-
-            {showExecute && (
-              <motion.button
-                type="button"
-                disabled={!canExecute}
-                whileTap={canExecute ? { scale: 0.96 } : undefined}
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  submit();
-                }}
-                aria-label="Execute entry"
-                title="Execute"
-                className={`flex h-10 shrink-0 items-center gap-1.5 rounded-lg border px-3 font-mono text-[12px] tracking-wide transition-colors duration-150 ${
-                  canExecute
-                    ? 'border-[color-mix(in_srgb,var(--accent)_45%,var(--border))] bg-[color-mix(in_srgb,var(--accent)_14%,var(--bg-soft))] text-[var(--accent)]'
-                    : 'border-[var(--border)] bg-[var(--bg-soft)] text-[var(--text-faint)]'
-                }`}
-              >
-                <span className="text-[14px] leading-none">↵</span>
-                <span>exec</span>
-              </motion.button>
-            )}
-          </div>
-        </div>
-      )}
+        <motion.button
+          type="button"
+          disabled={!canSave}
+          whileTap={canSave ? { scale: 0.96 } : undefined}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            submit();
+          }}
+          aria-label="Save note"
+          title="Save note"
+          className={`mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors sm:h-9 sm:w-9 ${
+            canSave
+              ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
+              : 'text-[var(--text-faint)] opacity-40'
+          }`}
+        >
+          <span className="text-[18px] leading-none">✓</span>
+        </motion.button>
+      </div>
 
       {disabled && (
-        <p className="mt-2 font-mono text-[10px] tracking-wide text-[var(--text-faint)]">
-          Connection offline — prompt locked until tunnel restores
+        <p className="border-t border-[var(--border)] px-4 py-2 font-mono text-[10px] tracking-wide text-[var(--text-faint)]">
+          Offline — notes unlock when the tunnel restores
         </p>
       )}
     </motion.form>
