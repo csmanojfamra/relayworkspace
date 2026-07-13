@@ -2,18 +2,30 @@ const envUrl = (import.meta.env.VITE_SOCKET_URL as string | undefined)?.trim();
 
 /**
  * Resolve the Socket.IO server URL.
- * Priority: VITE_SOCKET_URL → localhost fallback → same-origin (only if explicitly empty env is intentional).
+ *
+ * Production on relayworkspace.in uses same-origin so Socket.IO is proxied via
+ * Vercel → Railway. WhatsApp/Instagram in-app browsers often block direct
+ * connections to *.up.railway.app.
  */
 export function getSocketUrl(): string {
-  if (envUrl) return envUrl.replace(/\/$/, '');
-
   if (typeof window !== 'undefined') {
-    const { protocol, hostname } = window.location;
+    const { protocol, hostname, origin } = window.location;
+
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      return `${protocol}//${hostname}:3001`;
+      return (envUrl || `${protocol}//${hostname}:3001`).replace(/\/$/, '');
+    }
+
+    // Always same-origin on our deployed hosts (proxied in vercel.json).
+    if (
+      hostname === 'relayworkspace.in' ||
+      hostname === 'www.relayworkspace.in' ||
+      hostname.endsWith('.vercel.app')
+    ) {
+      return origin;
     }
   }
 
+  if (envUrl) return envUrl.replace(/\/$/, '');
   return '';
 }
 
@@ -56,4 +68,3 @@ export function promptLabel(role: 'host' | 'guest' | 'me' | 'friend'): string {
   if (role === 'me' || role === 'host') return 'LOCAL ENDPOINT';
   return 'REMOTE ENDPOINT';
 }
-

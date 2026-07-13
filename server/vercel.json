@@ -5,5 +5,18 @@
   "outputDirectory": "public",
   "framework": null,
   "ignoreCommand": "exit 1",
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "rewrites": [
+    {
+      "source": "/socket.io",
+      "destination": "https://web-production-76c64.up.railway.app/socket.io"
+    },
+    {
+      "source": "/socket.io/:path*",
+      "destination": "https://web-production-76c64.up.railway.app/socket.io/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
 }

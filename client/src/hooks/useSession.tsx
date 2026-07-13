@@ -450,6 +450,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           (result: { status: 'pending' } | JoinResult | ErrorPayload) => {
             settled = true;
             if ('code' in result) {
+              // Prior attempt already queued — keep guest on the waiting screen.
+              if (
+                result.code === 'ROOM_FULL' &&
+                /pending/i.test(result.message ?? '')
+              ) {
+                setPhase('waiting-approval');
+                return;
+              }
               setError(result);
               setPhase('error');
               return;
