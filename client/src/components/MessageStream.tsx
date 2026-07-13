@@ -34,6 +34,8 @@ type StreamItem =
     }
   | { kind: 'system'; key: string; event: ReturnType<typeof useTerminalTimeline>['events'][number] };
 
+const NEAR_BOTTOM_PX = 96;
+
 export function MessageStream({
   messages,
   role,
@@ -46,8 +48,8 @@ export function MessageStream({
   onTyping,
   inputDisabled,
 }: MessageStreamProps) {
-  const bottomRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const stickToBottom = useRef(true);
   const stageTimers = useRef(new Map<string, number>());
   const [revealedIds, setRevealedIds] = useState(() => new Set<string>());
 
@@ -77,8 +79,7 @@ export function MessageStream({
 
       if (revealedIds.has(message.id) || stageTimers.current.has(message.id)) continue;
 
-      // 400–700ms secure relay staging
-      const delay = 400 + Math.floor(Math.random() * 300);
+      const delay = 280 + Math.floor(Math.random() * 220);
       const timer = window.setTimeout(() => {
         stageTimers.current.delete(message.id);
         setRevealedIds((prev) => {
@@ -106,26 +107,19 @@ export function MessageStream({
 
   const stagingRemote = displayItems.some((i) => i.kind === 'entry' && i.staged);
 
-  useEffect(() => {
+  const onScroll = () => {
     const root = scrollRef.current;
     if (!root) return;
+    const distance = root.scrollHeight - root.scrollTop - root.clientHeight;
+    stickToBottom.current = distance < NEAR_BOTTOM_PX;
+  };
 
-    const pin = () => {
-      root.scrollTop = root.scrollHeight;
-    };
-
-    const active = document.activeElement;
-    const typing =
-      active instanceof HTMLTextAreaElement && root.contains(active);
-
-    if (typing) {
-      pin();
-      return;
-    }
-
-    const id = window.setTimeout(pin, 16);
-    return () => window.clearTimeout(id);
-  }, [displayItems.length, typingLine, ambient?.id, stagingRemote, revealedIds.size]);
+  // Only follow new entries / staging when the reader is already near the bottom.
+  useEffect(() => {
+    const root = scrollRef.current;
+    if (!root || !stickToBottom.current) return;
+    root.scrollTop = root.scrollHeight;
+  }, [displayItems.length, stagingRemote, revealedIds.size, typingLine]);
 
   useEffect(() => {
     if (!role || !onVisible) return;
@@ -141,75 +135,77 @@ export function MessageStream({
   }, [messages, role, onVisible, revealedIds]);
 
   return (
-    <div
-      ref={scrollRef}
-      className="scroll-y terminal-scroll h-full px-7 py-8 font-mono sm:px-14 sm:py-10"
-      onMouseDown={(e) => {
-        const target = e.target as HTMLElement;
-        if (target.closest('textarea, button, a, input')) return;
-        const prompt = scrollRef.current?.querySelector('textarea');
-        if (prompt instanceof HTMLTextAreaElement && !prompt.disabled) {
-          e.preventDefault();
-          prompt.focus();
-        }
-      }}
-    >
-      <div className="mx-auto flex min-h-full w-full max-w-[1180px] flex-col justify-end pb-[max(18px,var(--safe-bottom))]">
-        <div className="space-y-0.5">
-          <AnimatePresence initial={false}>
-            {displayItems.map((item) => {
-              if (item.kind === 'system') {
-                return <SystemEventLine key={item.key} event={item.event} />;
-              }
-              if (item.staged) {
-                return <PreparingOutput key={`prep-${item.key}`} />;
-              }
-              return (
-                <TerminalEntry
-                  key={item.key}
-                  message={item.message}
-                  mine={item.mine}
-                />
-              );
-            })}
-          </AnimatePresence>
+    <div className="flex h-full min-h-0 flex-col font-mono">
+      <div
+        ref={scrollRef}
+        onScroll={onScroll}
+        className="scroll-y terminal-scroll min-h-0 flex-1 px-5 py-4 sm:px-10 sm:py-5"
+        onMouseDown={(e) => {
+          const target = e.target as HTMLElement;
+          if (target.closest('textarea, button, a, input')) return;
+          const prompt = document.querySelector('.terminal-prompt textarea');
+          if (prompt instanceof HTMLTextAreaElement && !prompt.disabled) {
+            e.preventDefault();
+            prompt.focus();
+          }
+        }}
+      >
+        <div className="mx-auto w-full max-w-[980px]">
+          {displayItems.length === 0 && !typingLine && !ambient && (
+            <p className="mb-4 font-mono text-[11px] tracking-wide text-[var(--text-faint)] opacity-65">
+              {peerConnected
+                ? 'Awaiting endpoint activity.'
+                : connected
+                  ? 'Remote endpoint offline — local prompt remains available.'
+                  : 'Waiting for connection…'}
+            </p>
+          )}
 
-          <AnimatePresence mode="wait">
-            {typingLine && !stagingRemote && (
-              <TypingEvent key={typingLine} line={typingLine} />
-            )}
-          </AnimatePresence>
+          <div className="space-y-0">
+            <AnimatePresence initial={false}>
+              {displayItems.map((item) => {
+                if (item.kind === 'system') {
+                  return <SystemEventLine key={item.key} event={item.event} />;
+                }
+                if (item.staged) {
+                  return <PreparingOutput key={`prep-${item.key}`} />;
+                }
+                return (
+                  <TerminalEntry
+                    key={item.key}
+                    message={item.message}
+                    mine={item.mine}
+                  />
+                );
+              })}
+            </AnimatePresence>
 
-          <AnimatePresence>
-            {!typingLine && ambient && (
+            {typingLine && !stagingRemote && <TypingEvent line={typingLine} />}
+
+            {ambient && !typingLine && (
               <SystemEventLine key={ambient.id} event={ambient} compact />
             )}
-          </AnimatePresence>
 
-          <div className="pt-4">
-            {displayItems.length === 0 && !typingLine && !ambient && (
-              <p className="mb-7 font-mono text-[11px] tracking-wide text-[var(--text-faint)] opacity-70">
-                {peerConnected
-                  ? 'Awaiting endpoint activity.'
-                  : connected
-                    ? 'Remote endpoint offline — local prompt remains available.'
-                    : 'Waiting for connection…'}
-              </p>
-            )}
             {peerConnected === false && connected && displayItems.length > 0 && (
-              <p className="mb-5 font-mono text-[10px] tracking-wide text-[var(--text-faint)] opacity-55">
+              <p className="py-2 font-mono text-[10px] tracking-wide text-[var(--text-faint)] opacity-50">
                 Remote offline — entries sync when the endpoint returns.
               </p>
             )}
-            <CommandInput
-              onSend={onSend}
-              onTyping={onTyping}
-              disabled={inputDisabled}
-            />
           </div>
         </div>
+      </div>
 
-        <div ref={bottomRef} className="h-4" />
+      <div className="shrink-0 border-t border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_92%,transparent)] px-5 py-3 pb-[max(12px,var(--safe-bottom))] backdrop-blur-md sm:px-10">
+        <div className="mx-auto w-full max-w-[980px]">
+          <CommandInput
+            onSend={(value) => {
+              stickToBottom.current = true;
+              onSend(value);
+            }}
+            onTyping={onTyping}
+            disabled={inputDisabled}
+          />
+        </div>
       </div>
     </div>
   );
@@ -240,28 +236,29 @@ function TerminalEntry({
         opacity: 0,
         height: 0,
         overflow: 'hidden',
-        transition: { duration: 0.35, ease: [0.22, 1, 0.36, 1] },
+        transition: { duration: 0.28, ease: [0.22, 1, 0.36, 1] },
       }}
-      transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-      className="font-mono py-7"
+      transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+      className="font-mono py-3.5"
     >
-      <p
-        className="font-mono text-[10px] font-medium uppercase tracking-[0.18em]"
-        style={{ color: mine ? 'var(--me)' : 'var(--peer)' }}
-      >
-        {endpoint}
-      </p>
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+        <p
+          className="font-mono text-[10px] font-medium uppercase tracking-[0.14em]"
+          style={{ color: mine ? 'var(--me)' : 'var(--peer)' }}
+        >
+          {endpoint}
+        </p>
+        <p className="font-mono text-[10px] tabular-nums tracking-wide text-[var(--text-faint)] opacity-45">
+          {formatUtcTime(message.timestamp)}
+        </p>
+      </div>
 
-      <p className="mt-1.5 font-mono text-[10px] tabular-nums tracking-wide text-[var(--text-faint)] opacity-50">
-        {formatUtcTime(message.timestamp)}
-      </p>
-
-      <p className="mt-3.5 whitespace-pre-wrap break-words font-mono text-[14px] leading-7 text-[var(--text)] sm:text-[15px]">
+      <p className="mt-1.5 whitespace-pre-wrap break-words font-mono text-[14px] leading-6 text-[var(--text)] sm:text-[15px]">
         {message.content}
       </p>
 
       {(hasTtl || bothSeen || message.delivered) && (
-        <div className="mt-3.5 flex items-center gap-2 opacity-40">
+        <div className="mt-1.5 flex items-center gap-2 opacity-35">
           <p className="font-mono text-[9px] tracking-wide text-[var(--text-faint)]">
             {hasTtl && remaining ? (
               <>
@@ -275,11 +272,11 @@ function TerminalEntry({
           </p>
           {ttlProgress != null && (
             <span
-              className="h-px w-10 overflow-hidden bg-[color-mix(in_srgb,var(--border)_80%,transparent)]"
+              className="h-px w-8 overflow-hidden bg-[color-mix(in_srgb,var(--border)_80%,transparent)]"
               aria-hidden
             >
               <span
-                className="block h-full origin-left bg-[var(--accent)] opacity-50 transition-[transform] duration-200 ease-linear"
+                className="block h-full origin-left bg-[var(--accent)] opacity-40"
                 style={{ transform: `scaleX(${ttlProgress})` }}
               />
             </span>

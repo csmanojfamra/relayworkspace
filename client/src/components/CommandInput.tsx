@@ -83,7 +83,7 @@ export function CommandInput({ onSend, onTyping, disabled }: CommandInputProps) 
       initial={false}
       animate={{ opacity: disabled ? 0.4 : 1 }}
       transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-      className="terminal-prompt font-mono pt-7"
+      className="terminal-prompt font-mono"
       onMouseDown={(e) => {
         if (disabled) return;
         if ((e.target as HTMLElement).closest('textarea, button')) return;

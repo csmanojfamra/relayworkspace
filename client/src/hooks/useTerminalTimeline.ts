@@ -116,13 +116,8 @@ export function useTerminalTimeline({
       return;
     }
 
+    // Stable line only — rotating copy felt like blinking noise.
     setTypingLine(TYPING_LINES[0]);
-    const id = window.setInterval(() => {
-      typingIndex.current = (typingIndex.current + 1) % TYPING_LINES.length;
-      setTypingLine(TYPING_LINES[typingIndex.current]);
-    }, 900);
-
-    return () => window.clearInterval(id);
   }, [peerTyping]);
 
   useEffect(() => {
@@ -132,7 +127,7 @@ export function useTerminalTimeline({
     }
 
     const scheduleNext = (fn: () => void) =>
-      window.setTimeout(fn, 60_000 + Math.floor(Math.random() * 60_000));
+      window.setTimeout(fn, 90_000 + Math.floor(Math.random() * 90_000));
 
     let timer = 0;
 

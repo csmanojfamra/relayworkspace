@@ -141,8 +141,10 @@ export class WorkspaceTelemetryEngine {
   }
 
   onSessionStarted(): SystemEvent[] {
-    const lines = this.pickMany(POOL.session, 3);
-    return lines.map((text, i) => makeEvent(i === 0 ? 'ok' : 'ok', text));
+    return [
+      makeEvent('ok', this.pick(POOL.session)),
+      makeEvent('ok', 'Relay available'),
+    ];
   }
 
   /** @deprecated alias */

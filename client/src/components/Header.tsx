@@ -1,4 +1,4 @@
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import { useSession } from '@/hooks/useSession';
 import { useElapsed } from '@/hooks/useUtilities';
@@ -44,37 +44,19 @@ export function Header({ onOpenSidebar, showMenu }: HeaderProps) {
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h1 className="truncate text-[13px] font-semibold tracking-tight">Relay</h1>
-              <span className="relative flex h-2 w-2">
-                <AnimatePresence>
-                  {secure && (
-                    <motion.span
-                      initial={{ opacity: 0, scale: 0.6 }}
-                      animate={{ opacity: 0.45, scale: 1.8 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 1.6, repeat: Infinity, ease: 'easeOut' }}
-                      className="absolute inset-0 rounded-full bg-[var(--accent)]"
-                    />
-                  )}
-                </AnimatePresence>
-                <span
-                  className={`relative inline-block h-2 w-2 rounded-full transition-colors duration-300 ${
-                    secure
-                      ? 'bg-[var(--accent)]'
-                      : connected
-                        ? 'bg-[var(--warning)]'
-                        : 'bg-[var(--danger)]'
-                  }`}
-                />
-              </span>
+              <span
+                className={`inline-block h-2 w-2 rounded-full transition-colors duration-300 ${
+                  secure
+                    ? 'bg-[var(--accent)]'
+                    : connected
+                      ? 'bg-[var(--warning)]'
+                      : 'bg-[var(--danger)]'
+                }`}
+              />
             </div>
-            <motion.p
-              key={sessionLabel}
-              initial={{ opacity: 0, y: 2 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="truncate text-[11px] text-[var(--text-muted)]"
-            >
+            <p className="truncate text-[11px] text-[var(--text-muted)]">
               {secure ? '✓ Secure tunnel active' : sessionLabel}
-            </motion.p>
+            </p>
           </div>
         </div>
 
@@ -111,22 +93,9 @@ export function Header({ onOpenSidebar, showMenu }: HeaderProps) {
 }
 
 function useLiveLatency(base: number | null, connected: boolean): number | null {
-  const [display, setDisplay] = useState(base);
-
-  useEffect(() => {
-    if (!connected || base == null) {
-      setDisplay(base);
-      return;
-    }
-    setDisplay(base);
-    const id = window.setInterval(() => {
-      const jitter = Math.round((Math.random() - 0.5) * 4);
-      setDisplay(Math.max(1, base + jitter));
-    }, 1600 + Math.floor(Math.random() * 900));
-    return () => window.clearInterval(id);
-  }, [base, connected]);
-
-  return display;
+  // Show real RTT only — no jitter remount flicker in the status bar.
+  if (!connected) return null;
+  return base;
 }
 
 function useLiveMemory(
@@ -146,15 +115,7 @@ function useLiveMemory(
     const uptimeBoost = sessionStartedAt
       ? Math.min(6, Math.floor((Date.now() - sessionStartedAt) / 180_000))
       : 0;
-
-    const tick = () => {
-      const drift = Math.round((Math.random() - 0.45) * 3);
-      setMb(Math.max(28, Math.min(72, base + uptimeBoost + drift)));
-    };
-
-    tick();
-    const id = window.setInterval(tick, 2200 + Math.floor(Math.random() * 1200));
-    return () => window.clearInterval(id);
+    setMb(Math.max(28, Math.min(72, base + uptimeBoost)));
   }, [connected, entryCount, sessionStartedAt]);
 
   return mb;
@@ -172,15 +133,7 @@ function Stat({
   return (
     <div className={`min-w-0 flex-col justify-center text-right ${className || 'flex'}`}>
       <p className="text-[9px] uppercase tracking-[0.16em] text-[var(--text-faint)]">{label}</p>
-      <motion.p
-        key={value}
-        initial={{ opacity: 0.5, y: 1 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.22 }}
-        className="truncate font-mono text-[11px] tabular-nums text-[var(--text)]"
-      >
-        {value}
-      </motion.p>
+      <p className="truncate font-mono text-[11px] tabular-nums text-[var(--text)]">{value}</p>
     </div>
   );
 }
