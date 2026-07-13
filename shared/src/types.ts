@@ -32,7 +32,24 @@ export interface ChatMessage {
   seen: boolean;
   /** Reserved; per-line auto-delete is disabled. Notes clear via /clear or room end. */
   deleteAt: number | null;
+  /** Optional photo or document shared in the note */
+  attachment?: NoteAttachment | null;
 }
+
+export type AttachmentKind = 'image' | 'document';
+
+export interface NoteAttachment {
+  id: string;
+  kind: AttachmentKind;
+  name: string;
+  mime: string;
+  size: number;
+  /** Absolute-path style URL on the API host, e.g. /api/attachments/:id */
+  url: string;
+}
+
+/** Max upload size for note attachments (bytes). */
+export const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 
 export interface MessageDeletedPayload {
   roomId: string;

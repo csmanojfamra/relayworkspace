@@ -26,14 +26,21 @@ export function Sidebar({ open, onClose, mobile = false, fill = false }: Sidebar
   const preview = useMemo(() => {
     const last = messages[messages.length - 1];
     if (!last) return 'No notes yet';
-    const line = last.content.trim().split('\n')[0] ?? '';
+    const line =
+      last.content.trim().split('\n')[0] ||
+      last.attachment?.name ||
+      (last.attachment ? 'Attachment' : '');
+    if (!line) return 'No notes yet';
     return line.length > 48 ? `${line.slice(0, 48)}…` : line;
   }, [messages]);
 
   const listTitle = useMemo(() => {
-    const first = messages[0]?.content?.trim();
+    const first = messages[0];
     if (!first) return 'Untitled';
-    const line = first.split('\n')[0] ?? first;
+    const raw =
+      first.content?.trim() || first.attachment?.name || (first.attachment ? 'Attachment' : '');
+    if (!raw) return 'Untitled';
+    const line = raw.split('\n')[0] ?? raw;
     return line.length > 28 ? `${line.slice(0, 28)}…` : line;
   }, [messages]);
 

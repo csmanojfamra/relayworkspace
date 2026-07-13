@@ -80,6 +80,12 @@ export default defineConfig(({ mode }) => {
           target: apiProxy,
           ws: true,
         },
+        '/api': {
+          target: apiProxy,
+        },
+        '/health': {
+          target: apiProxy,
+        },
       },
     },
     build: {

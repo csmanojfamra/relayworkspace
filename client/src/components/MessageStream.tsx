@@ -8,7 +8,9 @@ import {
 } from 'react';
 import type { ChatMessage, UserRole } from '@terminalchat/shared';
 import { InlineNoteEditor } from '@/components/CommandInput';
+import { NoteAttachmentPreview } from '@/components/NoteAttachmentPreview';
 import { useSession } from '@/hooks/useSession';
+import { resolveAttachmentUrl } from '@/lib/utils';
 
 interface MessageStreamProps {
   messages: ChatMessage[];
@@ -20,6 +22,8 @@ interface MessageStreamProps {
   onVisible?: (ids: string[]) => void;
   onSend: (value: string) => void;
   onEdit: (messageId: string, content: string) => void;
+  onDeleteMessage: (messageId: string) => void;
+  onAttach?: (file: File) => Promise<boolean>;
   onTyping: (typing: boolean) => void;
   inputDisabled?: boolean;
 }
@@ -29,9 +33,11 @@ const NOTE_LINE_PX = 28;
 const NEAR_BOTTOM_PX = 140;
 
 function noteTitleFromMessages(messages: ChatMessage[]): string {
-  const first = messages[0]?.content?.trim();
+  const first = messages[0];
   if (!first) return 'Untitled';
-  const line = first.split('\n')[0] ?? first;
+  const raw = first.content?.trim() || first.attachment?.name || '';
+  if (!raw) return first.attachment ? 'Attachment' : 'Untitled';
+  const line = raw.split('\n')[0] ?? raw;
   return line.length > 42 ? `${line.slice(0, 42)}…` : line;
 }
 
@@ -61,6 +67,8 @@ export function MessageStream({
   onVisible,
   onSend,
   onEdit,
+  onDeleteMessage,
+  onAttach,
   onTyping,
   inputDisabled,
 }: MessageStreamProps) {
@@ -174,12 +182,16 @@ export function MessageStream({
   const pullLastLineIntoComposer = () => {
     const last = messages[messages.length - 1];
     if (!last || inputDisabled) return;
+    if (last.attachment) {
+      focusLine(last.id, 'end');
+      return;
+    }
     composerSeedRef.current = {
       token: composerSeedRef.current.token + 1,
       text: last.content,
     };
     setComposerSeed(composerSeedRef.current.token);
-    onEdit(last.id, '');
+    onDeleteMessage(last.id);
     stickToBottom.current = true;
   };
 
@@ -190,7 +202,7 @@ export function MessageStream({
         onScroll={onScroll}
         className="scroll-y terminal-scroll min-h-0 flex-1 bg-[var(--note)]"
         onClick={(e) => {
-          if ((e.target as HTMLElement).closest('textarea, a, button, input, [data-note-line]')) {
+          if ((e.target as HTMLElement).closest('textarea, a, button, input, [data-note-line], iframe')) {
             return;
           }
           focusComposer();
@@ -232,7 +244,7 @@ export function MessageStream({
                     disabled={inputDisabled}
                     onSave={(content) => onEdit(item.key, content)}
                     onDelete={() => {
-                      onEdit(item.key, '');
+                      onDeleteMessage(item.key);
                       if (prevId) focusLine(prevId, 'end');
                       else focusComposer();
                     }}
@@ -264,6 +276,14 @@ export function MessageStream({
                 stickToBottom.current = true;
                 onSend(value);
               }}
+              onAttach={
+                onAttach
+                  ? async (file) => {
+                      stickToBottom.current = true;
+                      return onAttach(file);
+                    }
+                  : undefined
+              }
               onTyping={onTyping}
               disabled={inputDisabled}
               onArrowUpEmpty={() => {
@@ -343,7 +363,10 @@ function NoteParagraph({
     }
     const trimmed = content.trim();
     if (!trimmed) {
-      if (allowDelete) onDelete();
+      // Keep attachment blocks when caption is empty; only plain lines delete.
+      if (allowDelete && !message.attachment) onDelete();
+      else if (!message.attachment) return;
+      else if (message.content.trim()) onSave('');
       return;
     }
     if (trimmed === message.content.trim()) return;
@@ -371,30 +394,35 @@ function NoteParagraph({
 
     if (e.key === 'Backspace' && atStart && !el.value) {
       e.preventDefault();
-      flushSave('', { allowDelete: true });
+      // Empty caption + Backspace removes the whole block (text or attachment).
+      onDelete();
       return;
     }
 
     if (e.key === 'ArrowUp' && atStart) {
       e.preventDefault();
-      flushSave(draftRef.current, { allowDelete: true });
+      flushSave(draftRef.current, { allowDelete: !message.attachment });
       onArrowUp();
       return;
     }
 
     if (e.key === 'ArrowDown' && atEnd) {
       e.preventDefault();
-      flushSave(draftRef.current, { allowDelete: true });
+      flushSave(draftRef.current, { allowDelete: !message.attachment });
       onArrowDown();
       return;
     }
 
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      flushSave(draftRef.current, { allowDelete: true });
+      flushSave(draftRef.current, { allowDelete: !message.attachment });
       onEnter();
     }
   };
+
+  const attachmentUrl = message.attachment
+    ? resolveAttachmentUrl(message.attachment.url)
+    : null;
 
   return (
     <motion.div
@@ -405,6 +433,14 @@ function NoteParagraph({
       data-note-line
       className="note-paragraph-edit"
     >
+      {message.attachment && attachmentUrl && (
+        <NoteAttachmentPreview
+          attachment={message.attachment}
+          url={attachmentUrl}
+          canRemove={!disabled}
+          onRemove={onDelete}
+        />
+      )}
       <textarea
         ref={textareaRef}
         data-note-id={message.id}
@@ -432,12 +468,13 @@ function NoteParagraph({
         onBlur={() => {
           focusedRef.current = false;
           emitTyping(false);
-          flushSave(draftRef.current, { allowDelete: true });
+          flushSave(draftRef.current, { allowDelete: !message.attachment });
         }}
         rows={1}
         spellCheck
-        aria-label="Edit note line"
-        className="note-line block w-full resize-none overflow-hidden bg-transparent text-left text-[var(--text)] outline-none disabled:opacity-50"
+        aria-label={message.attachment ? 'Attachment caption' : 'Edit note line'}
+        placeholder={message.attachment ? 'Add a caption…' : undefined}
+        className="note-line block w-full resize-none overflow-hidden bg-transparent text-left text-[var(--text)] outline-none placeholder:text-[var(--text-faint)] disabled:opacity-50"
         style={{
           caretColor: 'var(--accent)',
           textAlign: 'left',
@@ -447,3 +484,4 @@ function NoteParagraph({
     </motion.div>
   );
 }
+

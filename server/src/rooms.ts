@@ -4,6 +4,7 @@ import type {
   RoomPublicState,
   UserRole,
 } from '@terminalchat/shared';
+import { clearRoomAttachments, removeAttachmentForMessage } from './attachments.js';
 
 /** Keep locked sessions alive after both endpoints briefly leave (refresh / network blip). */
 export const LOCKED_ROOM_GRACE_MS = 30 * 60 * 1000;
@@ -170,21 +171,28 @@ export class RoomStore {
   addMessage(room: Room, message: ChatMessage): void {
     room.messages.push(message);
     if (room.messages.length > 500) {
+      const dropped = room.messages.slice(0, room.messages.length - 500);
       room.messages = room.messages.slice(-500);
+      for (const old of dropped) {
+        if (old.attachment?.id) {
+          removeAttachmentForMessage(room.roomId, old.id, old.attachment.id);
+        }
+      }
     }
     this.touch(room);
   }
 
-  removeMessage(roomId: string, messageId: string): boolean {
+  removeMessage(roomId: string, messageId: string): ChatMessage | null {
     const room = this.rooms.get(roomId);
-    if (!room) return false;
-    const before = room.messages.length;
-    room.messages = room.messages.filter((m) => m.id !== messageId);
-    if (room.messages.length < before) {
-      this.touch(room);
-      return true;
+    if (!room) return null;
+    const index = room.messages.findIndex((m) => m.id === messageId);
+    if (index < 0) return null;
+    const [removed] = room.messages.splice(index, 1);
+    if (removed.attachment?.id) {
+      removeAttachmentForMessage(roomId, messageId, removed.attachment.id);
     }
-    return false;
+    this.touch(room);
+    return removed;
   }
 
   updateMessageContent(
@@ -204,6 +212,7 @@ export class RoomStore {
   clearMessages(room: Room): number {
     const count = room.messages.length;
     room.messages = [];
+    clearRoomAttachments(room.roomId);
     this.touch(room);
     return count;
   }
@@ -343,6 +352,7 @@ export class RoomStore {
     }
 
     room.messages = [];
+    clearRoomAttachments(roomId);
     this.rooms.delete(roomId);
     this.queueDelete(roomId);
   }
@@ -370,7 +380,15 @@ export class RoomStore {
         inviteToken: snap.inviteToken,
         inviteStatus: snap.inviteStatus,
         locked: snap.locked,
-        messages: snap.messages ?? [],
+        messages: (snap.messages ?? []).map((message) => {
+          // Attachment bytes are memory-only; keep a text remnant after restart.
+          if (!message.attachment) return message;
+          return {
+            ...message,
+            content: message.content?.trim() || message.attachment.name,
+            attachment: null,
+          };
+        }),
         createdAt: snap.createdAt,
         pendingRequest: null,
       };

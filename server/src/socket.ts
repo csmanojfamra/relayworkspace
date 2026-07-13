@@ -1,6 +1,7 @@
 import type { Server, Socket } from 'socket.io';
 import {
   SocketEvents,
+  MAX_ATTACHMENT_BYTES,
   type ChatMessage,
   type CreateRoomResult,
   type ErrorPayload,
@@ -10,6 +11,7 @@ import {
   type SeenPayload,
   type TypingPayload,
 } from '@terminalchat/shared';
+import { putAttachment } from './attachments.js';
 import { bindEphemeralIO, clearMessageTimer, clearRoomTimers } from './ephemeral.js';
 import { roomStore } from './rooms.js';
 import { generateId, generateInviteToken, generateRoomId, getClientOrigin } from './utils.js';
@@ -512,9 +514,75 @@ export function registerSocketHandlers(io: Server): void {
     );
 
     socket.on(
+      SocketEvents.SEND_ATTACHMENT,
+      (
+        meta: { name?: string; mime?: string; size?: number },
+        data: ArrayBuffer | Buffer | Uint8Array,
+        ack?: (message: ChatMessage | null) => void
+      ) => {
+        const binding = roomStore.getSocketBinding(socket.id);
+        if (!binding) {
+          emitError(socket, { code: 'UNAUTHORIZED', message: 'Not in a workspace.' });
+          ack?.(null);
+          return;
+        }
+
+        const room = roomStore.getRoom(binding.roomId);
+        if (!room) {
+          emitError(socket, { code: 'ROOM_NOT_FOUND', message: 'Workspace not found.' });
+          ack?.(null);
+          return;
+        }
+
+        const buffer = Buffer.isBuffer(data)
+          ? data
+          : Buffer.from(data instanceof ArrayBuffer ? new Uint8Array(data) : data);
+
+        if (!buffer.length || buffer.length > MAX_ATTACHMENT_BYTES) {
+          ack?.(null);
+          return;
+        }
+
+        const messageId = generateId();
+        const attachment = putAttachment({
+          roomId: room.roomId,
+          messageId,
+          name: meta?.name?.trim() || 'Attachment',
+          mime: meta?.mime?.trim() || 'application/octet-stream',
+          data: buffer,
+        });
+
+        if (!attachment) {
+          ack?.(null);
+          return;
+        }
+
+        const peerId = roomStore.getPeerSocketId(room, binding.role);
+        const message: ChatMessage = {
+          id: messageId,
+          roomId: room.roomId,
+          senderId: socket.id,
+          senderRole: binding.role,
+          content: '',
+          timestamp: Date.now(),
+          delivered: Boolean(peerId),
+          seenByHost: binding.role === 'host',
+          seenByGuest: binding.role === 'guest',
+          seen: false,
+          deleteAt: null,
+          attachment,
+        };
+
+        roomStore.addMessage(room, message);
+        io.to(room.roomId).emit(SocketEvents.RECEIVE_MESSAGE, message);
+        ack?.(message);
+      }
+    );
+
+    socket.on(
       SocketEvents.EDIT_MESSAGE,
       (
-        payload: { messageId: string; content: string },
+        payload: { messageId: string; content: string; remove?: boolean },
         ack?: (message: ChatMessage | null) => void
       ) => {
         const binding = roomStore.getSocketBinding(socket.id);
@@ -529,8 +597,17 @@ export function registerSocketHandlers(io: Server): void {
           return;
         }
 
+        const existing = room.messages.find((m) => m.id === payload.messageId);
+        if (!existing) {
+          ack?.(null);
+          return;
+        }
+
         const content = payload.content?.trim() ?? '';
-        if (!content) {
+        const shouldRemove =
+          payload.remove === true || (!content && !existing.attachment);
+
+        if (shouldRemove) {
           const removed = roomStore.removeMessage(room.roomId, payload.messageId);
           if (removed) {
             clearMessageTimer(payload.messageId);

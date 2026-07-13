@@ -33,6 +33,15 @@ export function isSocketUrlConfigured(): boolean {
   return Boolean(getSocketUrl());
 }
 
+/** Resolve attachment URLs against the Socket.IO / API host. */
+export function resolveAttachmentUrl(pathOrUrl: string): string {
+  if (!pathOrUrl) return '';
+  if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
+  const base = getSocketUrl().replace(/\/$/, '');
+  if (!base) return pathOrUrl;
+  return `${base}${pathOrUrl.startsWith('/') ? pathOrUrl : `/${pathOrUrl}`}`;
+}
+
 export function formatTime(ts: number): string {
   return new Intl.DateTimeFormat(undefined, {
     hour: '2-digit',

@@ -258,6 +258,23 @@ a {
   background: transparent;
 }
 
+.note-attachment {
+  text-align: left;
+}
+
+.note-media-frame img {
+  background: color-mix(in srgb, var(--bg-soft) 55%, var(--note));
+}
+
+.note-pdf-card {
+  background: var(--bg-elevated);
+}
+
+.note-pdf-frame {
+  /* Soft clip so ruled paper doesn't fight the PDF chrome */
+  isolation: isolate;
+}
+
 .notes-sidebar {
   background: var(--sidebar);
 }

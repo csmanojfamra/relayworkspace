@@ -12,10 +12,14 @@ import {
   roomToSnapshot,
   upsertRoomSnapshot,
 } from './db.js';
+import { getAttachment } from './attachments.js';
 import { attachRedisAdapter } from './redis.js';
 import { registerSocketHandlers } from './socket.js';
 import { roomStore } from './rooms.js';
 import { getAllowedOrigins, getPort } from './utils.js';
+
+/** ~5MB files + Socket.IO framing overhead */
+const MAX_HTTP_BUFFER = 6 * 1024 * 1024;
 
 async function main(): Promise<void> {
   const app = express();
@@ -54,6 +58,30 @@ async function main(): Promise<void> {
     });
   });
 
+  app.get('/api/attachments/:id', (req, res) => {
+    const stored = getAttachment(req.params.id);
+    if (!stored) {
+      res.status(404).json({ error: 'Attachment not found' });
+      return;
+    }
+
+    const safeName = stored.name.replace(/[^\w.\- ()[\]]+/g, '_');
+    const inline =
+      stored.kind === 'image' ||
+      stored.mime.toLowerCase() === 'application/pdf' ||
+      stored.name.toLowerCase().endsWith('.pdf');
+    res.setHeader('Content-Type', stored.mime);
+    res.setHeader('Content-Length', String(stored.size));
+    res.setHeader(
+      'Content-Disposition',
+      `${inline ? 'inline' : 'attachment'}; filename="${safeName}"`
+    );
+    res.setHeader('Cache-Control', 'private, no-store');
+    // Allow same-origin / proxied clients to embed PDF previews.
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.send(stored.data);
+  });
+
   const staticDir = process.env.STATIC_DIR?.trim();
   if (staticDir && fs.existsSync(staticDir)) {
     app.use(express.static(staticDir, { index: false, maxAge: '1h' }));
@@ -82,6 +110,7 @@ async function main(): Promise<void> {
       credentials: true,
     },
     transports: ['websocket', 'polling'],
+    maxHttpBufferSize: MAX_HTTP_BUFFER,
   });
 
   try {

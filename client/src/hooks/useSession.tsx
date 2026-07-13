@@ -55,7 +55,9 @@ interface SessionContextValue {
   checkPendingRequest: (onResult?: (found: boolean) => void) => void;
   resendJoinRequest: (onResult?: (ok: boolean, detail?: string) => void) => void;
   sendMessage: (content: string) => void;
+  sendAttachment: (file: File) => Promise<boolean>;
   editMessage: (messageId: string, content: string) => void;
+  deleteMessage: (messageId: string) => void;
   clearMessages: (onResult?: (ok: boolean) => void) => void;
   setTyping: (typing: boolean) => void;
   markSeen: (ids: string[]) => void;
@@ -699,6 +701,46 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [ensureSocket, clearMessages]
   );
 
+  const sendAttachment = useCallback(
+    (file: File) =>
+      new Promise<boolean>((resolve) => {
+        const socket = ensureSocket();
+        if (!socket.connected) {
+          resolve(false);
+          return;
+        }
+        if (!file || file.size <= 0 || file.size > 5 * 1024 * 1024) {
+          resolve(false);
+          return;
+        }
+
+        void file.arrayBuffer().then((buffer) => {
+          socket.emit(
+            SocketEvents.SEND_ATTACHMENT,
+            {
+              name: file.name,
+              mime: file.type || 'application/octet-stream',
+              size: file.size,
+            },
+            buffer,
+            (message: ChatMessage | null) => {
+              if (message) {
+                setMessages((prev) => {
+                  if (prev.some((m) => m.id === message.id)) return prev;
+                  return [...prev, message];
+                });
+                resolve(true);
+                return;
+              }
+              resolve(false);
+            }
+          );
+          socket.emit(SocketEvents.TYPING_STOP);
+        }).catch(() => resolve(false));
+      }),
+    [ensureSocket]
+  );
+
   const editMessage = useCallback(
     (messageId: string, content: string) => {
       const socket = ensureSocket();
@@ -706,7 +748,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
       // Optimistic local update / delete for snappy note editing.
       if (!trimmed) {
-        setMessages((prev) => prev.filter((m) => m.id !== messageId));
+        setMessages((prev) => {
+          const target = prev.find((m) => m.id === messageId);
+          // Empty caption on an attachment stays; plain lines are removed.
+          if (target?.attachment) {
+            return prev.map((m) =>
+              m.id === messageId ? { ...m, content: '' } : m
+            );
+          }
+          return prev.filter((m) => m.id !== messageId);
+        });
       } else {
         setMessages((prev) =>
           prev.map((m) => (m.id === messageId ? { ...m, content: trimmed } : m))
@@ -714,6 +765,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
 
       socket.emit(SocketEvents.EDIT_MESSAGE, { messageId, content: trimmed });
+      socket.emit(SocketEvents.TYPING_STOP);
+    },
+    [ensureSocket]
+  );
+
+  const deleteMessage = useCallback(
+    (messageId: string) => {
+      const socket = ensureSocket();
+      setMessages((prev) => prev.filter((m) => m.id !== messageId));
+      socket.emit(SocketEvents.EDIT_MESSAGE, {
+        messageId,
+        content: '',
+        remove: true,
+      });
       socket.emit(SocketEvents.TYPING_STOP);
     },
     [ensureSocket]
@@ -821,7 +886,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       checkPendingRequest,
       resendJoinRequest,
       sendMessage,
+      sendAttachment,
       editMessage,
+      deleteMessage,
       clearMessages,
       setTyping,
       markSeen,
@@ -854,7 +921,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       checkPendingRequest,
       resendJoinRequest,
       sendMessage,
+      sendAttachment,
       editMessage,
+      deleteMessage,
       clearMessages,
       setTyping,
       markSeen,

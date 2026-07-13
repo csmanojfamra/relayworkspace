@@ -19,7 +19,9 @@ export function Workspace() {
     connected,
     latency,
     sendMessage,
+    sendAttachment,
     editMessage,
+    deleteMessage,
     setTyping,
     markSeen,
   } = useSession();
@@ -67,6 +69,8 @@ export function Workspace() {
                 onVisible={onVisible}
                 onSend={sendMessage}
                 onEdit={editMessage}
+                onDeleteMessage={deleteMessage}
+                onAttach={sendAttachment}
                 onTyping={setTyping}
                 inputDisabled={!connected}
               />
