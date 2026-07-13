@@ -24,7 +24,8 @@ function applyTheme(id: ThemeId): void {
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [themeId, setThemeIdState] = useState<ThemeId>(() => {
     const saved = localStorage.getItem(STORAGE_KEY) as ThemeId | null;
-    return saved && themes.some((t) => t.id === saved) ? saved : 'modern-dark';
+    if (saved && themes.some((t) => t.id === saved)) return saved;
+    return 'apple-notes';
   });
 
   useEffect(() => {

@@ -8,13 +8,13 @@ export function StatusBanner() {
   let tone: 'warn' | 'info' = 'warn';
 
   if (!connected) {
-    message = 'Connection interrupted — restoring your pad…';
+    message = 'Connection lost — the note will sync when you’re back online';
     tone = 'warn';
   } else if (joinRequest && phase === 'host-ready') {
-    message = 'Someone is requesting access to this pad';
+    message = 'Join request waiting — allow access to continue';
     tone = 'info';
   } else if (phase === 'chat' && !peerConnected) {
-    message = 'Remote is offline — notes will sync when they return';
+    message = 'Waiting to reconnect — edits will sync when the link is back';
     tone = 'info';
   }
 
@@ -28,13 +28,13 @@ export function StatusBanner() {
           transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
           className={`overflow-hidden border-b border-[var(--border)] ${
             tone === 'info'
-              ? 'bg-[color-mix(in_srgb,var(--accent)_8%,var(--bg))]'
-              : 'bg-[color-mix(in_srgb,var(--warning)_7%,var(--bg))]'
+              ? 'bg-[color-mix(in_srgb,var(--accent)_14%,var(--bg))]'
+              : 'bg-[color-mix(in_srgb,var(--warning)_12%,var(--bg))]'
           }`}
         >
           <p
-            className={`px-4 py-2 text-center text-[12px] tracking-wide ${
-              tone === 'warn' ? 'text-[var(--warning)]' : 'text-[var(--accent)]'
+            className={`px-4 py-2.5 text-center text-[13px] ${
+              tone === 'warn' ? 'text-[var(--warning)]' : 'text-[var(--text)]'
             }`}
           >
             {message}

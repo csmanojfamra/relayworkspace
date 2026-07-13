@@ -14,44 +14,32 @@ interface SystemEventLineProps {
   compact?: boolean;
 }
 
-/** Quiet pad meta — Apple Notes sidebar energy, not terminal logs. */
+/** Quiet date-separator style meta — not a terminal log. */
 export function SystemEventLine({ event, compact = false }: SystemEventLineProps) {
-  const lines = [event.text, ...(event.detail ?? [])];
-
   return (
-    <motion.div
+    <motion.p
       initial={{ opacity: 0 }}
-      animate={{ opacity: compact ? 0.4 : 0.55 }}
-      transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-      className="px-1 py-1"
+      animate={{ opacity: compact ? 0.45 : 0.65 }}
+      className={`py-2 text-center text-[11px] tracking-wide ${toneClass[event.tone]}`}
     >
-      <div className={`space-y-0.5 font-mono text-[10px] tracking-wide ${toneClass[event.tone]}`}>
-        {lines.map((line, i) => (
-          <p key={`${event.id}-${i}`} className={i === 0 ? undefined : 'opacity-75'}>
-            {line}
-          </p>
-        ))}
-      </div>
-    </motion.div>
+      {event.text}
+    </motion.p>
   );
 }
 
-/** Remote note arriving — brief, calm. */
 export function PreparingOutput() {
   const [phase, setPhase] = useState(0);
 
   useEffect(() => {
-    const t1 = window.setTimeout(() => setPhase(1), 160);
+    const t1 = window.setTimeout(() => setPhase(1), 180);
     return () => window.clearTimeout(t1);
   }, []);
 
   return (
-    <div className="note-card note-card-remote px-4 py-3.5 opacity-70 sm:px-5">
-      <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--peer)]">
-        Remote
-      </p>
-      <p className="note-body mt-2 text-[15px] text-[var(--text-muted)]">
-        {phase === 0 ? 'Receiving note…' : 'Opening…'}
+    <div className="note-entry note-entry-remote py-2 opacity-70">
+      <p className="text-[11px] font-medium text-[var(--peer)]">Them</p>
+      <p className="note-body mt-1 text-[16px] text-[var(--text-muted)]">
+        {phase === 0 ? 'Writing…' : 'Adding to the note…'}
       </p>
     </div>
   );
@@ -59,11 +47,11 @@ export function PreparingOutput() {
 
 export function TypingEvent({ line }: { line: string }) {
   return (
-    <div className="note-card note-card-remote px-4 py-3.5 opacity-75 sm:px-5">
-      <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--peer)]">
-        Remote
+    <div className="note-entry note-entry-remote py-2 opacity-80">
+      <p className="text-[11px] font-medium text-[var(--peer)]">Them</p>
+      <p className="note-body mt-1 text-[16px] italic text-[var(--text-muted)]">
+        {line || 'Writing…'}
       </p>
-      <p className="note-body mt-2 text-[15px] text-[var(--text-muted)]">{line || 'Writing…'}</p>
     </div>
   );
 }
@@ -71,10 +59,8 @@ export function TypingEvent({ line }: { line: string }) {
 export function AsciiRule() {
   return (
     <div
-      className="select-none overflow-hidden whitespace-nowrap text-[10px] leading-none tracking-[0.18em] text-[var(--text-faint)] opacity-25"
+      className="my-2 h-px w-full bg-[color-mix(in_srgb,var(--border)_80%,transparent)]"
       aria-hidden
-    >
-      ──────────────────────────────
-    </div>
+    />
   );
 }

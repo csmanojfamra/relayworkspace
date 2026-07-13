@@ -1,16 +1,14 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { MESSAGE_TTL_MS, type ChatMessage, type UserRole } from '@terminalchat/shared';
-import { formatCompactTime, formatUtcTime, shortPromptLabel } from '@/lib/utils';
-import { useTerminalTimeline } from '@/hooks/useTerminalTimeline';
-import { useCountdown } from '@/hooks/useCountdown';
-import { useIsMobile } from '@/hooks/useMediaQuery';
 import {
-  PreparingOutput,
-  SystemEventLine,
-  TypingEvent,
-} from '@/components/SystemEventLine';
-import { CommandInput } from '@/components/CommandInput';
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from 'react';
+import type { ChatMessage, UserRole } from '@terminalchat/shared';
+import { InlineNoteEditor } from '@/components/CommandInput';
+import { useSession } from '@/hooks/useSession';
 
 interface MessageStreamProps {
   messages: ChatMessage[];
@@ -21,48 +19,71 @@ interface MessageStreamProps {
   latency: number | null;
   onVisible?: (ids: string[]) => void;
   onSend: (value: string) => void;
+  onEdit: (messageId: string, content: string) => void;
   onTyping: (typing: boolean) => void;
   inputDisabled?: boolean;
 }
 
-type StreamItem =
-  | {
-      kind: 'entry';
-      key: string;
-      message: ChatMessage;
-      mine: boolean;
-      staged: boolean;
-    }
-  | { kind: 'system'; key: string; event: ReturnType<typeof useTerminalTimeline>['events'][number] };
+/** Must match CSS --note-line (ruled paper rhythm). */
+const NOTE_LINE_PX = 28;
+const NEAR_BOTTOM_PX = 140;
 
-const NEAR_BOTTOM_PX = 96;
+function noteTitleFromMessages(messages: ChatMessage[]): string {
+  const first = messages[0]?.content?.trim();
+  if (!first) return 'Untitled';
+  const line = first.split('\n')[0] ?? first;
+  return line.length > 42 ? `${line.slice(0, 42)}…` : line;
+}
+
+function focusComposer() {
+  document.querySelector<HTMLTextAreaElement>('.note-inline-editor textarea')?.focus();
+}
+
+function focusLine(messageId: string, caret: 'start' | 'end' = 'end') {
+  requestAnimationFrame(() => {
+    const el = document.querySelector<HTMLTextAreaElement>(
+      `textarea[data-note-id="${messageId}"]`
+    );
+    if (!el) return;
+    el.focus();
+    const pos = caret === 'start' ? 0 : el.value.length;
+    el.setSelectionRange(pos, pos);
+  });
+}
 
 export function MessageStream({
   messages,
   role,
   peerTyping,
-  peerConnected,
-  connected,
-  latency,
+  peerConnected: _peerConnected,
+  connected: _connected,
+  latency: _latency,
   onVisible,
   onSend,
+  onEdit,
   onTyping,
   inputDisabled,
 }: MessageStreamProps) {
+  const { sessionStartedAt } = useSession();
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
   const stageTimers = useRef(new Map<string, number>());
   const [revealedIds, setRevealedIds] = useState(() => new Set<string>());
-  const isMobile = useIsMobile();
+  const composerSeedRef = useRef<{ token: number; text: string }>({ token: 0, text: '' });
+  const [composerSeed, setComposerSeed] = useState(0);
 
-  const { events, typingLine, ambient } = useTerminalTimeline({
-    peerConnected,
-    connected,
-    peerTyping,
-    messageCount: messages.length,
-    latency,
-    active: true,
-  });
+  const title = useMemo(() => noteTitleFromMessages(messages), [messages]);
+  const dateLabel = useMemo(() => {
+    const ts = messages[0]?.timestamp ?? sessionStartedAt ?? Date.now();
+    return new Intl.DateTimeFormat(undefined, {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(new Date(ts));
+  }, [messages, sessionStartedAt]);
 
   useEffect(() => {
     if (messages.length === 0) {
@@ -86,10 +107,8 @@ export function MessageStream({
         }
         continue;
       }
-
       if (revealedIds.has(message.id) || stageTimers.current.has(message.id)) continue;
-
-      const delay = 240 + Math.floor(Math.random() * 200);
+      const delay = 180 + Math.floor(Math.random() * 160);
       const timer = window.setTimeout(() => {
         stageTimers.current.delete(message.id);
         setRevealedIds((prev) => {
@@ -110,25 +129,34 @@ export function MessageStream({
     };
   }, []);
 
-  const displayItems = useMemo(
-    () => buildStream(messages, events, role, revealedIds),
-    [messages, events, role, revealedIds]
+  const paragraphs = useMemo(
+    () =>
+      messages.map((message) => {
+        const mine = message.senderRole === role;
+        return {
+          key: message.id,
+          message,
+          mine,
+          staged: !mine && !revealedIds.has(message.id),
+        };
+      }),
+    [messages, role, revealedIds]
   );
 
-  const stagingRemote = displayItems.some((i) => i.kind === 'entry' && i.staged);
+  const stagingRemote = paragraphs.some((p) => p.staged);
 
   const onScroll = () => {
     const root = scrollRef.current;
     if (!root) return;
-    const distance = root.scrollHeight - root.scrollTop - root.clientHeight;
-    stickToBottom.current = distance < NEAR_BOTTOM_PX;
+    stickToBottom.current =
+      root.scrollHeight - root.scrollTop - root.clientHeight < NEAR_BOTTOM_PX;
   };
 
   useEffect(() => {
     const root = scrollRef.current;
     if (!root || !stickToBottom.current) return;
     root.scrollTop = root.scrollHeight;
-  }, [displayItems.length, stagingRemote, revealedIds.size, typingLine]);
+  }, [paragraphs.length, stagingRemote, revealedIds.size, peerTyping]);
 
   useEffect(() => {
     if (!role || !onVisible) return;
@@ -143,196 +171,279 @@ export function MessageStream({
     if (pending.length) onVisible(pending);
   }, [messages, role, onVisible, revealedIds]);
 
+  const pullLastLineIntoComposer = () => {
+    const last = messages[messages.length - 1];
+    if (!last || inputDisabled) return;
+    composerSeedRef.current = {
+      token: composerSeedRef.current.token + 1,
+      text: last.content,
+    };
+    setComposerSeed(composerSeedRef.current.token);
+    onEdit(last.id, '');
+    stickToBottom.current = true;
+  };
+
   return (
     <div className="notes-pad flex h-full min-h-0 flex-col">
       <div
         ref={scrollRef}
         onScroll={onScroll}
-        className="scroll-y terminal-scroll min-h-0 flex-1 px-3 py-4 sm:px-8 sm:py-6"
+        className="scroll-y terminal-scroll min-h-0 flex-1 bg-[var(--note)]"
+        onClick={(e) => {
+          if ((e.target as HTMLElement).closest('textarea, a, button, input, [data-note-line]')) {
+            return;
+          }
+          focusComposer();
+        }}
       >
-        <div className="mx-auto flex w-full max-w-[720px] flex-col gap-3 sm:gap-3.5">
-          {displayItems.length === 0 && !typingLine && !(ambient && !isMobile) && (
-            <div className="px-1 py-8 text-center sm:py-12">
-              <p className="note-body text-[18px] tracking-tight text-[var(--text-muted)] sm:text-[20px]">
-                {peerConnected
-                  ? 'Start the shared pad'
-                  : connected
-                    ? 'Write while you wait'
-                    : 'Connecting…'}
-              </p>
-              <p className="mt-2 text-[12px] tracking-wide text-[var(--text-faint)]">
-                {peerConnected
-                  ? 'Notes appear here for both of you. Type /clear to wipe the pad.'
-                  : connected
-                    ? 'They’ll sync when the remote joins.'
-                    : 'Hang on while Relay restores the tunnel.'}
-              </p>
-            </div>
-          )}
-
-          <AnimatePresence initial={false}>
-            {displayItems.map((item) => {
-              if (item.kind === 'system') {
-                return <SystemEventLine key={item.key} event={item.event} />;
-              }
-              if (item.staged) {
-                return <PreparingOutput key={`prep-${item.key}`} />;
-              }
-              return (
-                <NoteCard
-                  key={item.key}
-                  message={item.message}
-                  mine={item.mine}
-                  compact={isMobile}
-                />
-              );
-            })}
-          </AnimatePresence>
-
-          {typingLine && !stagingRemote && <TypingEvent line={typingLine} />}
-
-          {!isMobile && ambient && !typingLine && (
-            <SystemEventLine key={ambient.id} event={ambient} compact />
-          )}
-
-          {peerConnected === false && connected && displayItems.length > 0 && (
-            <p className="px-1 py-2 text-center text-[11px] tracking-wide text-[var(--text-faint)] opacity-60">
-              Remote offline — notes sync when they return.
+        <div className="flex min-h-full w-full flex-col pl-5 pr-4 pb-[max(28px,var(--safe-bottom))] pt-4 sm:pl-6 sm:pr-6">
+          <header className="note-page-header shrink-0 text-left">
+            <h1 className="note-title w-full text-left text-[28px] font-semibold leading-[1.15] tracking-[-0.035em] text-[var(--text)] sm:text-[32px]">
+              {title}
+            </h1>
+            <p className="mt-1.5 w-full text-left text-[13px] leading-5 text-[var(--text-faint)]">
+              {dateLabel}
             </p>
-          )}
-        </div>
-      </div>
+          </header>
 
-      <div className="notes-dock shrink-0 px-3 pt-2 pb-[max(10px,var(--safe-bottom))] sm:px-8 sm:pt-3 sm:pb-[max(14px,var(--safe-bottom))]">
-        <div className="mx-auto w-full max-w-[720px]">
-          <CommandInput
-            onSend={(value) => {
-              stickToBottom.current = true;
-              onSend(value);
-            }}
-            onTyping={onTyping}
-            disabled={inputDisabled}
-          />
+          <div className="note-ruled mt-4 min-h-[55vh] w-full flex-1 text-left">
+            <AnimatePresence initial={false}>
+              {paragraphs.map((item, index) => {
+                if (item.staged) {
+                  return (
+                    <motion.p
+                      key={`prep-${item.key}`}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 0.4 }}
+                      className="note-line italic text-[var(--text-faint)]"
+                    >
+                      …
+                    </motion.p>
+                  );
+                }
+                const prevId = index > 0 ? paragraphs[index - 1]?.key : null;
+                const nextId =
+                  index < paragraphs.length - 1 ? paragraphs[index + 1]?.key : null;
+                return (
+                  <NoteParagraph
+                    key={item.key}
+                    message={item.message}
+                    mine={item.mine}
+                    disabled={inputDisabled}
+                    onSave={(content) => onEdit(item.key, content)}
+                    onDelete={() => {
+                      onEdit(item.key, '');
+                      if (prevId) focusLine(prevId, 'end');
+                      else focusComposer();
+                    }}
+                    onEnter={() => {
+                      if (nextId) focusLine(nextId, 'start');
+                      else focusComposer();
+                    }}
+                    onArrowUp={() => {
+                      if (prevId) focusLine(prevId, 'end');
+                    }}
+                    onArrowDown={() => {
+                      if (nextId) focusLine(nextId, 'start');
+                      else focusComposer();
+                    }}
+                    onTyping={onTyping}
+                  />
+                );
+              })}
+            </AnimatePresence>
+
+            {peerTyping && !stagingRemote && (
+              <p className="note-line italic text-[var(--text-faint)]">Writing…</p>
+            )}
+
+            <InlineNoteEditor
+              seedToken={composerSeed}
+              seedText={composerSeedRef.current.text}
+              onSend={(value) => {
+                stickToBottom.current = true;
+                onSend(value);
+              }}
+              onTyping={onTyping}
+              disabled={inputDisabled}
+              onArrowUpEmpty={() => {
+                const last = messages[messages.length - 1];
+                if (last) focusLine(last.id, 'end');
+              }}
+              onBackspaceEmpty={pullLastLineIntoComposer}
+            />
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-function NoteCard({
+function NoteParagraph({
   message,
   mine,
-  compact = false,
+  disabled,
+  onSave,
+  onDelete,
+  onEnter,
+  onArrowUp,
+  onArrowDown,
+  onTyping,
 }: {
   message: ChatMessage;
   mine: boolean;
-  compact?: boolean;
+  disabled?: boolean;
+  onSave: (content: string) => void;
+  onDelete: () => void;
+  onEnter: () => void;
+  onArrowUp: () => void;
+  onArrowDown: () => void;
+  onTyping: (typing: boolean) => void;
 }) {
-  const remaining = useCountdown(message.deleteAt);
-  const bothSeen = message.seenByHost && message.seenByGuest;
-  const author = shortPromptLabel(mine ? 'me' : 'friend');
-  const stamp = compact ? formatCompactTime(message.timestamp) : formatUtcTime(message.timestamp);
-  const hasTtl = Boolean(message.deleteAt && remaining);
+  const [draft, setDraft] = useState(message.content);
+  const draftRef = useRef(message.content);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const focusedRef = useRef(false);
+  const typingRef = useRef(false);
+  const stopTimer = useRef<number | null>(null);
+  const saveTimer = useRef<number | null>(null);
 
-  const ttlProgress =
-    hasTtl && message.deleteAt
-      ? Math.max(0, Math.min(1, (message.deleteAt - Date.now()) / MESSAGE_TTL_MS))
-      : null;
+  // Sync remote/peer updates while this line is not being edited.
+  useEffect(() => {
+    if (focusedRef.current) return;
+    setDraft(message.content);
+    draftRef.current = message.content;
+  }, [message.content]);
 
-  return (
-    <motion.article
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{
-        opacity: 0,
-        height: 0,
-        overflow: 'hidden',
-        marginBottom: 0,
-        transition: { duration: 0.28, ease: [0.22, 1, 0.36, 1] },
-      }}
-      transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-      className={`note-card ${mine ? 'note-card-local' : 'note-card-remote'} px-4 py-3.5 sm:px-5 sm:py-4`}
-    >
-      <p
-        className={`note-body whitespace-pre-wrap break-words leading-7 text-[var(--text)] ${
-          compact ? 'text-[16px]' : 'text-[16px] sm:text-[17px]'
-        }`}
-      >
-        {message.content}
-      </p>
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = '0px';
+    const next = Math.max(NOTE_LINE_PX, Math.min(el.scrollHeight, NOTE_LINE_PX * 24));
+    el.style.height = `${Math.ceil(next / NOTE_LINE_PX) * NOTE_LINE_PX}px`;
+  }, [draft]);
 
-      <div className="mt-3 flex flex-wrap items-center gap-x-2.5 gap-y-1">
-        <span
-          className="font-mono text-[10px] font-medium uppercase tracking-[0.12em]"
-          style={{ color: mine ? 'var(--me)' : 'var(--peer)' }}
-        >
-          {author}
-        </span>
-        <span className="font-mono text-[10px] tabular-nums text-[var(--text-faint)] opacity-70">
-          {stamp}
-        </span>
-        {(hasTtl || bothSeen || message.delivered) && (
-          <span className="ml-auto flex items-center gap-2 font-mono text-[9px] text-[var(--text-faint)] opacity-45">
-            {hasTtl && remaining ? (
-              <>
-                TTL <span className="tabular-nums">{remaining}</span>
-              </>
-            ) : bothSeen ? (
-              'TTL armed'
-            ) : (
-              'syncing'
-            )}
-            {ttlProgress != null && (
-              <span
-                className="h-px w-8 overflow-hidden bg-[color-mix(in_srgb,var(--border)_80%,transparent)]"
-                aria-hidden
-              >
-                <span
-                  className="block h-full origin-left bg-[var(--accent)] opacity-40"
-                  style={{ transform: `scaleX(${ttlProgress})` }}
-                />
-              </span>
-            )}
-          </span>
-        )}
-      </div>
-    </motion.article>
-  );
-}
+  useEffect(() => {
+    return () => {
+      if (stopTimer.current) window.clearTimeout(stopTimer.current);
+      if (saveTimer.current) window.clearTimeout(saveTimer.current);
+    };
+  }, []);
 
-function buildStream(
-  messages: ChatMessage[],
-  events: ReturnType<typeof useTerminalTimeline>['events'],
-  role: UserRole | null,
-  revealedIds: Set<string>
-): StreamItem[] {
-  const merged: Array<
-    | { kind: 'entry'; at: number; message: ChatMessage }
-    | { kind: 'system'; at: number; event: (typeof events)[number] }
-  > = [
-    ...events.map((event) => ({ kind: 'system' as const, at: event.timestamp, event })),
-    ...messages.map((message) => ({ kind: 'entry' as const, at: message.timestamp, message })),
-  ].sort((a, b) => a.at - b.at);
+  const emitTyping = (next: boolean) => {
+    if (typingRef.current === next) return;
+    typingRef.current = next;
+    onTyping(next);
+  };
 
-  const items: StreamItem[] = [];
+  const flushSave = (content: string, { allowDelete = false } = {}) => {
+    if (saveTimer.current) {
+      window.clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    const trimmed = content.trim();
+    if (!trimmed) {
+      if (allowDelete) onDelete();
+      return;
+    }
+    if (trimmed === message.content.trim()) return;
+    onSave(trimmed);
+  };
 
-  for (const entry of merged) {
-    if (entry.kind === 'system') {
-      items.push({ kind: 'system', key: entry.event.id, event: entry.event });
-      continue;
+  const scheduleSave = (content: string) => {
+    // Never auto-delete while typing — empty only removes on Backspace/blur.
+    if (!content.trim()) {
+      if (saveTimer.current) {
+        window.clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+      }
+      return;
+    }
+    if (saveTimer.current) window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => flushSave(content), 450);
+  };
+
+  const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    const el = e.currentTarget;
+    const atStart = el.selectionStart === 0 && el.selectionEnd === 0;
+    const atEnd =
+      el.selectionStart === el.value.length && el.selectionEnd === el.value.length;
+
+    if (e.key === 'Backspace' && atStart && !el.value) {
+      e.preventDefault();
+      flushSave('', { allowDelete: true });
+      return;
     }
 
-    const mine = entry.message.senderRole === role;
-    const staged = !mine && !revealedIds.has(entry.message.id);
+    if (e.key === 'ArrowUp' && atStart) {
+      e.preventDefault();
+      flushSave(draftRef.current, { allowDelete: true });
+      onArrowUp();
+      return;
+    }
 
-    items.push({
-      kind: 'entry',
-      key: entry.message.id,
-      message: entry.message,
-      mine,
-      staged,
-    });
-  }
+    if (e.key === 'ArrowDown' && atEnd) {
+      e.preventDefault();
+      flushSave(draftRef.current, { allowDelete: true });
+      onArrowDown();
+      return;
+    }
 
-  return items;
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      flushSave(draftRef.current, { allowDelete: true });
+      onEnter();
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0, height: 0, overflow: 'hidden' }}
+      transition={{ duration: 0.18 }}
+      data-note-line
+      className="note-paragraph-edit"
+    >
+      <textarea
+        ref={textareaRef}
+        data-note-id={message.id}
+        value={draft}
+        disabled={disabled}
+        title={mine ? 'You' : 'Them'}
+        onFocus={() => {
+          focusedRef.current = true;
+        }}
+        onChange={(e) => {
+          const next = e.target.value;
+          setDraft(next);
+          draftRef.current = next;
+          if (next.trim()) {
+            emitTyping(true);
+            if (stopTimer.current) window.clearTimeout(stopTimer.current);
+            stopTimer.current = window.setTimeout(() => emitTyping(false), 1400);
+            scheduleSave(next);
+          } else {
+            emitTyping(false);
+            scheduleSave(next);
+          }
+        }}
+        onKeyDown={onKeyDown}
+        onBlur={() => {
+          focusedRef.current = false;
+          emitTyping(false);
+          flushSave(draftRef.current, { allowDelete: true });
+        }}
+        rows={1}
+        spellCheck
+        aria-label="Edit note line"
+        className="note-line block w-full resize-none overflow-hidden bg-transparent text-left text-[var(--text)] outline-none disabled:opacity-50"
+        style={{
+          caretColor: 'var(--accent)',
+          textAlign: 'left',
+          minHeight: NOTE_LINE_PX,
+        }}
+      />
+    </motion.div>
+  );
 }

@@ -55,6 +55,7 @@ interface SessionContextValue {
   checkPendingRequest: (onResult?: (found: boolean) => void) => void;
   resendJoinRequest: (onResult?: (ok: boolean, detail?: string) => void) => void;
   sendMessage: (content: string) => void;
+  editMessage: (messageId: string, content: string) => void;
   clearMessages: (onResult?: (ok: boolean) => void) => void;
   setTyping: (typing: boolean) => void;
   markSeen: (ids: string[]) => void;
@@ -698,6 +699,26 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [ensureSocket, clearMessages]
   );
 
+  const editMessage = useCallback(
+    (messageId: string, content: string) => {
+      const socket = ensureSocket();
+      const trimmed = content.trim();
+
+      // Optimistic local update / delete for snappy note editing.
+      if (!trimmed) {
+        setMessages((prev) => prev.filter((m) => m.id !== messageId));
+      } else {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === messageId ? { ...m, content: trimmed } : m))
+        );
+      }
+
+      socket.emit(SocketEvents.EDIT_MESSAGE, { messageId, content: trimmed });
+      socket.emit(SocketEvents.TYPING_STOP);
+    },
+    [ensureSocket]
+  );
+
   const setTyping = useCallback(
     (typing: boolean) => {
       const socket = ensureSocket();
@@ -800,6 +821,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       checkPendingRequest,
       resendJoinRequest,
       sendMessage,
+      editMessage,
       clearMessages,
       setTyping,
       markSeen,
@@ -832,6 +854,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       checkPendingRequest,
       resendJoinRequest,
       sendMessage,
+      editMessage,
       clearMessages,
       setTyping,
       markSeen,

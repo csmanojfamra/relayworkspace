@@ -5,6 +5,7 @@ export const SocketEvents = {
   ACCEPT_REQUEST: 'accept-request',
   REJECT_REQUEST: 'reject-request',
   SEND_MESSAGE: 'send-message',
+  EDIT_MESSAGE: 'edit-message',
   RECEIVE_MESSAGE: 'receive-message',
   MESSAGE_UPDATED: 'message-updated',
   MESSAGE_DELETED: 'message-deleted',

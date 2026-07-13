@@ -4,7 +4,6 @@ import type {
   RoomPublicState,
   UserRole,
 } from '@terminalchat/shared';
-import { MESSAGE_TTL_MS } from '@terminalchat/shared';
 
 /** Keep locked sessions alive after both endpoints briefly leave (refresh / network blip). */
 export const LOCKED_ROOM_GRACE_MS = 30 * 60 * 1000;
@@ -188,6 +187,20 @@ export class RoomStore {
     return false;
   }
 
+  updateMessageContent(
+    roomId: string,
+    messageId: string,
+    content: string
+  ): ChatMessage | null {
+    const room = this.rooms.get(roomId);
+    if (!room) return null;
+    const message = room.messages.find((m) => m.id === messageId);
+    if (!message) return null;
+    message.content = content;
+    this.touch(room);
+    return { ...message };
+  }
+
   clearMessages(room: Room): number {
     const count = room.messages.length;
     room.messages = [];
@@ -219,10 +232,8 @@ export class RoomStore {
         changed = true;
       }
 
-      if (bothSeen && message.deleteAt == null) {
-        message.deleteAt = Date.now() + MESSAGE_TTL_MS;
-        changed = true;
-      }
+      // Notes stay until /clear, explicit edit-delete, or the room ends.
+      // No per-line TTL after both have seen.
 
       if (changed) updated.push({ ...message });
     }

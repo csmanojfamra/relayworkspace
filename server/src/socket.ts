@@ -10,7 +10,7 @@ import {
   type SeenPayload,
   type TypingPayload,
 } from '@terminalchat/shared';
-import { bindEphemeralIO, clearRoomTimers, scheduleMessageDeletion } from './ephemeral.js';
+import { bindEphemeralIO, clearMessageTimer, clearRoomTimers } from './ephemeral.js';
 import { roomStore } from './rooms.js';
 import { generateId, generateInviteToken, generateRoomId, getClientOrigin } from './utils.js';
 
@@ -512,6 +512,57 @@ export function registerSocketHandlers(io: Server): void {
     );
 
     socket.on(
+      SocketEvents.EDIT_MESSAGE,
+      (
+        payload: { messageId: string; content: string },
+        ack?: (message: ChatMessage | null) => void
+      ) => {
+        const binding = roomStore.getSocketBinding(socket.id);
+        if (!binding) {
+          ack?.(null);
+          return;
+        }
+
+        const room = roomStore.getRoom(binding.roomId);
+        if (!room) {
+          ack?.(null);
+          return;
+        }
+
+        const content = payload.content?.trim() ?? '';
+        if (!content) {
+          const removed = roomStore.removeMessage(room.roomId, payload.messageId);
+          if (removed) {
+            clearMessageTimer(payload.messageId);
+            io.to(room.roomId).emit(SocketEvents.MESSAGE_DELETED, {
+              messageId: payload.messageId,
+            });
+          }
+          ack?.(null);
+          return;
+        }
+
+        if (content.length > 4000) {
+          ack?.(null);
+          return;
+        }
+
+        const updated = roomStore.updateMessageContent(
+          room.roomId,
+          payload.messageId,
+          content
+        );
+        if (!updated) {
+          ack?.(null);
+          return;
+        }
+
+        io.to(room.roomId).emit(SocketEvents.MESSAGE_UPDATED, updated);
+        ack?.(updated);
+      }
+    );
+
+    socket.on(
       SocketEvents.CLEAR_MESSAGES,
       (ack?: (result: { ok: boolean; cleared: number } | ErrorPayload) => void) => {
         const binding = roomStore.getSocketBinding(socket.id);
@@ -581,9 +632,6 @@ export function registerSocketHandlers(io: Server): void {
 
       const updated = roomStore.markSeen(room, payload.messageIds, binding.role);
       for (const message of updated) {
-        if (message.deleteAt != null) {
-          scheduleMessageDeletion(room.roomId, message.id, message.deleteAt);
-        }
         io.to(room.roomId).emit(SocketEvents.MESSAGE_UPDATED, message);
       }
     });

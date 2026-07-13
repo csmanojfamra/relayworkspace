@@ -196,9 +196,13 @@ Switch instantly from the session sidebar:
 
 `create-room` · `join-room` · `join-request` · `accept-request` · `reject-request` · `send-message` · `receive-message` · `message-updated` · `message-deleted` · `typing-start` · `typing-stop` · `seen` · `heartbeat` · `disconnect`
 
-### Ephemeral messages
+### Ephemeral notes
 
-Messages live only in server memory. After **both** participants have viewed a message, a 2-minute countdown starts (`deleteAt`). At expiry the server removes the message and emits `message-deleted` to both clients — no placeholders, no history. When both users disconnect, the room, messages, timers, and invite are destroyed.
+Notes live only in server memory for the active session. Lines are **not** auto-deleted after both people have seen them — the shared note stays until someone clears it or the session ends.
+
+- **Clear all:** type `/clear` (or `/clear all`) while writing, or use Clear in the header/sidebar. Both clients receive `messages-cleared`.
+- **Delete a line:** edit a line empty (Backspace), or remove it while editing.
+- **Session end:** when the room is destroyed (both leave / invite expires), messages and invite state are wiped — no durable history.
 
 ## Troubleshooting
 

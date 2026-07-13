@@ -1,52 +1,48 @@
 @import 'tailwindcss';
 
 @theme {
-  --font-sans: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco,
-    Consolas, monospace;
-  --font-mono: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco,
-    Consolas, monospace;
+  --font-sans: 'Plus Jakarta Sans', 'Avenir Next', 'Segoe UI', sans-serif;
+  --font-mono: 'Plus Jakarta Sans', 'Avenir Next', 'Segoe UI', sans-serif;
   --font-note: 'Source Serif 4', 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
-  --font-family-sans: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo,
-    Monaco, Consolas, monospace;
-  --font-family-mono: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo,
-    Monaco, Consolas, monospace;
+  --font-family-sans: 'Plus Jakarta Sans', 'Avenir Next', 'Segoe UI', sans-serif;
+  --font-family-mono: 'Plus Jakarta Sans', 'Avenir Next', 'Segoe UI', sans-serif;
   --font-family-note: 'Source Serif 4', 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia,
     serif;
 }
 
 :root {
-  color-scheme: dark;
-  --bg: #0c0c0e;
-  --bg-elevated: #141417;
-  --bg-soft: #1a1a1f;
-  --panel: rgba(20, 20, 23, 0.92);
-  --border: rgba(255, 255, 255, 0.07);
-  --border-strong: rgba(255, 255, 255, 0.12);
-  --text: #ebe7e0;
-  --text-muted: #9a958c;
-  --text-faint: #6a665e;
-  --accent: #7cffb2;
-  --accent-soft: rgba(124, 255, 178, 0.12);
-  --danger: #ff6b7a;
-  --warning: #f5c542;
-  --me: #9ad4ff;
-  --peer: #7cffb2;
-  --cursor: #ebe7e0;
-  --glow: rgba(124, 255, 178, 0.08);
-  --shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
-  --scrollbar: rgba(255, 255, 255, 0.1);
-  --note: #1c1c21;
-  --note-local: #1a222c;
-  --note-remote: #1a2420;
-  --note-border: rgba(255, 255, 255, 0.06);
-  --note-shadow: 0 4px 24px rgba(0, 0, 0, 0.28);
+  color-scheme: light;
+  --bg: #f5f5f7;
+  --bg-elevated: #ffffff;
+  --bg-soft: #ebebef;
+  --panel: rgba(255, 255, 255, 0.92);
+  --border: rgba(60, 60, 67, 0.12);
+  --border-strong: rgba(60, 60, 67, 0.22);
+  --text: #1c1c1e;
+  --text-muted: #6c6c70;
+  --text-faint: #8e8e93;
+  --accent: #f5c518;
+  --accent-soft: rgba(245, 197, 24, 0.18);
+  --accent-ink: #1c1c1e;
+  --danger: #ff3b30;
+  --warning: #ff9f0a;
+  --me: #007aff;
+  --peer: #34c759;
+  --cursor: #1c1c1e;
+  --glow: rgba(245, 197, 24, 0.22);
+  --shadow: 0 8px 28px rgba(0, 0, 0, 0.06);
+  --scrollbar: rgba(60, 60, 67, 0.22);
+  --note: #fffdf6;
+  --note-local: #fffdf6;
+  --note-remote: #f7fbf8;
+  --note-border: rgba(60, 60, 67, 0.08);
+  --note-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --sidebar: #f2f2f7;
+  --paper-line: rgba(245, 197, 24, 0.28);
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
-  --header-h: 56px;
-  --command-h: 72px;
-  --keyboard-offset: 0px;
   --vv-height: 100dvh;
 }
 
@@ -64,7 +60,7 @@ body,
   padding: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: 'Plus Jakarta Sans', 'Avenir Next', 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
@@ -76,9 +72,9 @@ body {
   overflow: hidden;
   touch-action: manipulation;
   transition:
-    background-color 320ms ease,
-    color 320ms ease,
-    border-color 320ms ease;
+    background-color 280ms ease,
+    color 280ms ease,
+    border-color 280ms ease;
 }
 
 button,
@@ -115,60 +111,162 @@ a {
   transition: height 120ms ease-out;
 }
 
-.notes-pad {
+/* Soft paper wash for pre-note screens */
+.inception-wash {
   background:
-    radial-gradient(900px 480px at 50% -10%, rgba(255, 255, 255, 0.03), transparent 55%),
-    var(--bg);
+    radial-gradient(
+      ellipse 90% 55% at 50% -8%,
+      color-mix(in srgb, var(--accent) 34%, transparent),
+      transparent 62%
+    ),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--note) 70%, var(--bg)) 0%,
+      var(--bg) 58%,
+      color-mix(in srgb, var(--note) 55%, var(--bg)) 100%
+    );
+}
+
+.inception-rules {
+  opacity: 0.45;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 27px,
+    color-mix(in srgb, var(--paper-line, rgba(60, 60, 67, 0.1)) 80%, transparent) 27px,
+    color-mix(in srgb, var(--paper-line, rgba(60, 60, 67, 0.1)) 80%, transparent) 28px
+  );
+  mask-image: linear-gradient(to bottom, transparent, #000 35%, #000 85%, transparent);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 35%, #000 85%, transparent);
+}
+
+/* Yellow Notes glyph */
+.notes-glyph {
+  display: grid;
+  place-items: center;
+  width: 4.75rem;
+  height: 4.75rem;
+  border-radius: 1.2rem;
+  background: linear-gradient(160deg, #ffe566 0%, var(--accent) 55%, #e0a800 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.45) inset,
+    0 14px 32px var(--glow);
+  color: var(--accent-ink);
+  font-weight: 700;
+  font-size: 1.7rem;
+  letter-spacing: -0.04em;
+}
+
+.notes-glyph-sm {
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: 0.9rem;
+  font-size: 1.2rem;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.4) inset,
+    0 8px 20px var(--glow);
+}
+
+.notes-pad {
+  background: var(--note);
 }
 
 .notes-chrome {
-  transition:
-    background-color 280ms ease,
-    border-color 280ms ease;
+  background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
+  backdrop-filter: blur(18px) saturate(1.2);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
 }
 
-.notes-dock {
-  background:
-    linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--bg) 72%, transparent) 28%, var(--bg) 100%);
-}
-
-.note-card {
+.note-page-header {
+  /* Solid paper behind title so rules never cut through the heading */
   background: var(--note);
-  border: 1px solid var(--note-border);
-  border-radius: 1rem;
-  box-shadow: var(--note-shadow);
+  text-align: left;
+  padding-bottom: 12px;
 }
 
-.note-card-local {
-  background: var(--note-local);
-  border-left: 2px solid color-mix(in srgb, var(--me) 55%, transparent);
+.note-title {
+  font-family: 'Plus Jakarta Sans', 'Avenir Next', 'Segoe UI', sans-serif;
+  text-align: left;
 }
 
-.note-card-remote {
-  background: var(--note-remote);
-  border-left: 2px solid color-mix(in srgb, var(--peer) 55%, transparent);
+/*
+ * Ruled body — 28px grid.
+ * Line sits at the BOTTOM of each row; text uses the same line-height so
+ * glyphs rest in the band above the rule (no crossing through the stroke).
+ */
+.note-ruled {
+  --note-line: 28px;
+  width: 100%;
+  text-align: left;
+  background-color: var(--note);
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent calc(var(--note-line) - 1px),
+    var(--paper-line) calc(var(--note-line) - 1px),
+    var(--paper-line) var(--note-line)
+  );
+  background-size: 100% var(--note-line);
+  background-position: 0 0;
+  background-attachment: local;
+  background-repeat: repeat;
+}
+
+.note-line {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-family: var(--font-note);
+  font-size: 17px;
+  font-weight: 400;
+  letter-spacing: -0.012em;
+  line-height: var(--note-line, 28px);
+  text-align: left;
+  /* Nudge glyphs slightly up so they sit cleanly above the rule */
+  padding-bottom: 0;
+  box-sizing: border-box;
 }
 
 .note-body {
   font-family: var(--font-note);
   font-weight: 400;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.012em;
+  text-align: left;
 }
 
-.note-composer {
-  background: color-mix(in srgb, var(--note) 92%, var(--bg-elevated));
-  border: 1px solid var(--note-border);
-  border-radius: 1.15rem;
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.04) inset,
-    var(--note-shadow);
+.note-inline-editor {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  text-align: left;
+}
+
+.note-inline-editor textarea.note-line {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  text-align: left;
+  field-sizing: content;
+  background: transparent;
+}
+
+.notes-sidebar {
+  background: var(--sidebar);
 }
 
 .glass {
   background: var(--panel);
   border: 1px solid var(--border);
-  backdrop-filter: blur(20px) saturate(1.15);
-  -webkit-backdrop-filter: blur(20px) saturate(1.15);
+  backdrop-filter: blur(20px) saturate(1.2);
+  -webkit-backdrop-filter: blur(20px) saturate(1.2);
   box-shadow: var(--shadow);
 }
 
@@ -202,63 +300,11 @@ a {
   background-clip: padding-box;
 }
 
-.blink {
-  animation: blink 1.4s steps(1, end) infinite;
-}
-
-@keyframes blink {
-  0%,
-  55% {
-    opacity: 1;
-  }
-  56%,
-  100% {
-    opacity: 0;
-  }
-}
-
-@keyframes pulse-dot {
-  0%,
-  100% {
-    transform: scale(1);
-    opacity: 0.75;
-  }
-  50% {
-    transform: scale(1.2);
-    opacity: 1;
-  }
-}
-
-.connection-dot {
-  animation: pulse-dot 1.8s ease-in-out infinite;
-}
-
-.no-scrollbar {
-  scrollbar-width: none;
-}
-
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
-}
-
 .safe-pad {
   padding-top: var(--safe-top);
   padding-right: var(--safe-right);
   padding-bottom: var(--safe-bottom);
   padding-left: var(--safe-left);
-}
-
-.status-bar,
-.notes-chrome {
-  transition:
-    background-color 280ms ease,
-    border-color 280ms ease,
-    transform 180ms ease;
-}
-
-.terminal-prompt textarea,
-.note-composer textarea {
-  field-sizing: content;
 }
 
 @media (max-width: 899px) {
@@ -267,13 +313,12 @@ a {
   }
 }
 
-/* Soft theme crossfade for surfaces */
 aside,
 header,
 main,
 form {
   transition:
-    background-color 300ms ease,
-    border-color 300ms ease,
-    color 300ms ease;
+    background-color 280ms ease,
+    border-color 280ms ease,
+    color 280ms ease;
 }

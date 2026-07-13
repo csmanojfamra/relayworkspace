@@ -30,7 +30,7 @@ export interface ChatMessage {
   seenByGuest: boolean;
   /** Convenience: both participants have viewed the message */
   seen: boolean;
-  /** Epoch ms when the message should be purged; null until both have seen it */
+  /** Reserved; per-line auto-delete is disabled. Notes clear via /clear or room end. */
   deleteAt: number | null;
 }
 
@@ -38,9 +38,6 @@ export interface MessageDeletedPayload {
   roomId: string;
   messageId: string;
 }
-
-/** How long a fully-seen message remains before secure deletion */
-export const MESSAGE_TTL_MS = 2 * 60 * 1000;
 
 export interface RoomPublicState {
   roomId: string;

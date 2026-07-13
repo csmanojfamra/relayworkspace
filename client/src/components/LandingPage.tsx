@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/Button';
+import { InceptionShell } from '@/components/InceptionShell';
 import { useSession } from '@/hooks/useSession';
 
 export function LandingPage() {
@@ -7,59 +8,66 @@ export function LandingPage() {
 
   const statusText =
     connectionStatus === 'connected'
-      ? '> Secure relay available.'
+      ? 'Ready when you are'
       : connectionStatus === 'connecting'
-        ? '> Connecting core services...'
-        : '> Relay unreachable — backend URL not configured.';
+        ? 'Connecting…'
+        : 'Can’t reach Relay — check your connection';
 
   return (
-    <div className="app-shell safe-pad relative overflow-hidden">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute left-1/2 top-[16%] h-72 w-72 -translate-x-1/2 rounded-full bg-[var(--glow)] opacity-80 blur-3xl" />
-        <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-[var(--bg)] to-transparent" />
-      </div>
-
-      <div className="relative flex h-full flex-col items-center justify-center px-6">
+    <InceptionShell>
+      <div className="flex h-full flex-col items-center justify-center px-6 pb-10 pt-6">
         <motion.div
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-          className="w-full max-w-lg text-center"
+          className="w-full max-w-[22rem] text-center"
         >
           <motion.div
-            initial={{ scale: 0.92, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ delay: 0.05, duration: 0.45 }}
-            className="mx-auto mb-8 flex h-16 w-16 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] shadow-[var(--shadow)]"
+            initial={{ scale: 0.88, opacity: 0, rotate: -4 }}
+            animate={{ scale: 1, opacity: 1, rotate: 0 }}
+            transition={{ delay: 0.06, duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+            className="notes-glyph mx-auto mb-9"
+            aria-hidden
           >
-            <span className="font-mono text-2xl text-[var(--accent)]">&gt;_</span>
+            N
           </motion.div>
 
-          <p className="text-[11px] uppercase tracking-[0.32em] text-[var(--text-faint)]">
-            Temporary Secure Workspace
-          </p>
-          <h1 className="mt-4 text-4xl font-semibold tracking-tight text-[var(--text)] sm:text-5xl">
+          <motion.h1
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.12, duration: 0.45 }}
+            className="text-[46px] font-semibold leading-none tracking-[-0.045em] text-[var(--text)] sm:text-[52px]"
+          >
             Relay
-          </h1>
-          <p className="mx-auto mt-4 max-w-md text-sm leading-relaxed text-[var(--text-muted)]">
-            Private encrypted sessions.
-            <br />
-            Nothing stored. Everything temporary.
-          </p>
+          </motion.h1>
 
-          <div className="mt-10 flex flex-col items-center gap-4">
+          <motion.p
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2, duration: 0.45 }}
+            className="mx-auto mt-4 max-w-[18rem] text-[15px] leading-relaxed text-[var(--text-muted)]"
+          >
+            Open a note. Share the link. Write in sync — nothing lingers after the session.
+          </motion.p>
+
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3, duration: 0.45 }}
+            className="mt-11 flex flex-col items-center gap-3"
+          >
             <Button
               size="lg"
-              className="min-w-[250px] shadow-[0_0_0_1px_color-mix(in_srgb,var(--accent)_28%,transparent),0_14px_44px_var(--glow)]"
+              className="min-w-[220px] shadow-[0_10px_28px_var(--glow)]"
               onClick={createSession}
               disabled={!connected}
             >
-              Initialize Workspace
+              New note
             </Button>
 
             {connectionStatus === 'unavailable' && (
               <Button variant="ghost" size="sm" onClick={reconnect}>
-                Retry connection
+                Try again
               </Button>
             )}
 
@@ -67,7 +75,7 @@ export function LandingPage() {
               key={statusText}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className={`font-mono text-[11px] ${
+              className={`text-[13px] ${
                 connectionStatus === 'unavailable'
                   ? 'text-[var(--warning)]'
                   : 'text-[var(--text-faint)]'
@@ -75,9 +83,9 @@ export function LandingPage() {
             >
               {statusText}
             </motion.p>
-          </div>
+          </motion.div>
         </motion.div>
       </div>
-    </div>
+    </InceptionShell>
   );
 }
