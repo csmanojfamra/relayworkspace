@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { flushSync } from 'react-dom';
 import { io, type Socket } from 'socket.io-client';
 import {
   SocketEvents,
@@ -22,6 +23,31 @@ import {
   type UserRole,
 } from '@terminalchat/shared';
 import { getSocketUrl, isSocketUrlConfigured } from '@/lib/utils';
+
+/** Replace optimistic pending rows with the server message (clientId / content). */
+function upsertCommittedMessage(prev: ChatMessage[], message: ChatMessage): ChatMessage[] {
+  let droppedContentPending = false;
+  const without = prev.filter((m) => {
+    if (m.id === message.id) return false;
+    if (message.clientId && (m.id === message.clientId || m.clientId === message.clientId)) {
+      return false;
+    }
+    // Legacy fallback when server omitted clientId — drop at most one matching pending.
+    if (
+      !message.clientId &&
+      !droppedContentPending &&
+      m.id.startsWith('pending-') &&
+      m.content === message.content &&
+      m.senderRole === message.senderRole
+    ) {
+      droppedContentPending = true;
+      return false;
+    }
+    return true;
+  });
+  if (without.some((m) => m.id === message.id)) return without;
+  return [...without, message];
+}
 
 export interface PeerDraft {
   content: string;
@@ -110,6 +136,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const roomIdRef = useRef<string | null>(null);
   const inviteTokenRef = useRef<string | null>(null);
   const phaseRef = useRef<SessionPhase>('landing');
+  const roleRef = useRef<UserRole | null>(null);
 
   const [phase, setPhase] = useState<SessionPhase>('landing');
   const [role, setRole] = useState<UserRole | null>(null);
@@ -143,6 +170,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     phaseRef.current = phase;
   }, [phase]);
+
+  useEffect(() => {
+    roleRef.current = role;
+  }, [role]);
 
   useEffect(() => {
     roomIdRef.current = roomId;
@@ -323,10 +354,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     });
 
     socket.on(SocketEvents.RECEIVE_MESSAGE, (message: ChatMessage) => {
-      setMessages((prev) => {
-        if (prev.some((m) => m.id === message.id)) return prev;
-        return [...prev, message];
-      });
+      setMessages((prev) => upsertCommittedMessage(prev, message));
       // Committed line replaces live composer draft from that peer.
       setPeerDraft((prev) => {
         if (!prev || prev.messageId) return prev;
@@ -361,14 +389,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     socket.on(SocketEvents.TYPING_STOP, () => setPeerTyping(false));
 
     socket.on(SocketEvents.DRAFT_UPDATE, (payload: DraftUpdatePayload) => {
-      setPeerTyping(Boolean(payload.content));
+      const messageId = payload.messageId ?? null;
+      // Never wipe the composer ghost draft on an empty update — that races
+      // Enter/send and makes text vanish before RECEIVE_MESSAGE arrives.
+      // Composer draft clears only when the line is committed (or peer leaves).
       if (!payload.content) {
-        setPeerDraft(null);
+        if (messageId) {
+          setPeerDraft((prev) => (prev?.messageId === messageId ? null : prev));
+        }
         return;
       }
+      setPeerTyping(true);
       setPeerDraft({
         content: payload.content,
-        messageId: payload.messageId ?? null,
+        messageId,
       });
     });
 
@@ -744,12 +778,71 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      const roleNow = roleRef.current ?? role;
+      const pendingId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      const optimistic: ChatMessage = {
+        id: pendingId,
+        roomId: roomIdRef.current ?? roomId ?? '',
+        senderId: socket.id ?? 'local',
+        senderRole: roleNow ?? 'host',
+        content: trimmed,
+        timestamp: Date.now(),
+        delivered: false,
+        seenByHost: roleNow === 'host',
+        seenByGuest: roleNow === 'guest',
+        seen: false,
+        deleteAt: null,
+        clientId: pendingId,
+      };
+
+      // Commit optimistic row before emit so a fast ack/RECEIVE can't land first
+      // and leave a stuck pending-* line beside the real message.
+      flushSync(() => {
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === pendingId || m.clientId === pendingId)) {
+            return prev;
+          }
+          return [...prev, optimistic];
+        });
+      });
+
+      // Keep peer draft visible until RECEIVE_MESSAGE — do not send empty draft here.
       lastDraftSent.current = { content: '', messageId: null };
-      socket.emit(SocketEvents.DRAFT_UPDATE, { content: '', messageId: null });
-      socket.emit(SocketEvents.SEND_MESSAGE, { content: trimmed });
-      socket.emit(SocketEvents.TYPING_STOP);
+      pendingDraft.current = { content: '', messageId: null };
+      if (draftEmitTimer.current) {
+        window.clearTimeout(draftEmitTimer.current);
+        draftEmitTimer.current = null;
+      }
+
+      let settled = false;
+      const applyAck = (message: ChatMessage) => {
+        if (settled) return;
+        settled = true;
+        setMessages((prev) => upsertCommittedMessage(prev, message));
+        socket.emit(SocketEvents.TYPING_STOP);
+      };
+
+      if (!socket.connected) {
+        socket.connect();
+      }
+
+      socket.emit(
+        SocketEvents.SEND_MESSAGE,
+        { content: trimmed, clientId: pendingId },
+        (message: ChatMessage | null) => {
+          if (message) {
+            applyAck(message);
+            return;
+          }
+          // No ack — keep optimistic briefly for RECEIVE_MESSAGE swap; then drop if still pending.
+          window.setTimeout(() => {
+            if (settled) return;
+            setMessages((prev) => prev.filter((m) => m.id !== pendingId));
+          }, 2000);
+        }
+      );
     },
-    [ensureSocket, clearMessages]
+    [ensureSocket, clearMessages, role]
   );
 
   const sendAttachment = useCallback(

@@ -472,7 +472,10 @@ export function registerSocketHandlers(io: Server): void {
 
     socket.on(
       SocketEvents.SEND_MESSAGE,
-      (payload: { content: string }, ack?: (message: ChatMessage | null) => void) => {
+      (
+        payload: { content: string; clientId?: string },
+        ack?: (message: ChatMessage | null) => void
+      ) => {
         const binding = roomStore.getSocketBinding(socket.id);
         if (!binding) {
           emitError(socket, { code: 'UNAUTHORIZED', message: 'Not in a workspace.' });
@@ -493,6 +496,22 @@ export function registerSocketHandlers(io: Server): void {
           return;
         }
 
+        const clientId =
+          typeof payload.clientId === 'string' && payload.clientId.startsWith('pending-')
+            ? payload.clientId.slice(0, 64)
+            : null;
+
+        // Deduplicate retries — same clientId already in the room.
+        if (clientId) {
+          const existing = room.messages.find(
+            (m) => m.clientId === clientId && m.senderRole === binding.role
+          );
+          if (existing) {
+            ack?.(existing);
+            return;
+          }
+        }
+
         const peerId = roomStore.getPeerSocketId(room, binding.role);
         const message: ChatMessage = {
           id: generateId(),
@@ -506,6 +525,7 @@ export function registerSocketHandlers(io: Server): void {
           seenByGuest: binding.role === 'guest',
           seen: false,
           deleteAt: null,
+          clientId,
         };
 
         roomStore.addMessage(room, message);
@@ -716,6 +736,10 @@ export function registerSocketHandlers(io: Server): void {
         typeof payload?.messageId === 'string' && payload.messageId.trim()
           ? payload.messageId.trim()
           : null;
+
+      // Do not forward empty composer clears — they race SEND_MESSAGE and wipe
+      // the peer's live preview before the committed line arrives.
+      if (!content && !messageId) return;
 
       const draft: DraftUpdatePayload = {
         roomId: room.roomId,

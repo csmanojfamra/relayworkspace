@@ -47,14 +47,16 @@ export function InlineNoteEditor({
   const fileRef = useRef<HTMLInputElement>(null);
   const typingRef = useRef(false);
   const stopTimer = useRef<number | null>(null);
+  const sendingRef = useRef(false);
   const isMobile = useIsMobile();
   const isCoarsePointer = useMediaQuery('(pointer: coarse)');
+  const touchFriendly = isMobile || isCoarsePointer;
 
   useEffect(() => {
-    if (!autoFocus || disabled || isMobile || isCoarsePointer) return;
+    if (!autoFocus || disabled || touchFriendly) return;
     const id = window.setTimeout(() => textareaRef.current?.focus(), 60);
     return () => window.clearTimeout(id);
-  }, [autoFocus, disabled, isMobile, isCoarsePointer]);
+  }, [autoFocus, disabled, touchFriendly]);
 
   useEffect(() => {
     if (!seedToken) return;
@@ -74,17 +76,13 @@ export function InlineNoteEditor({
     if (!el) return;
     el.style.height = '0px';
     const next = Math.max(LINE, Math.min(el.scrollHeight, LINE * 12));
-    // Snap height to whole line rows so rules stay aligned.
     el.style.height = `${Math.ceil(next / LINE) * LINE}px`;
   }, [value]);
 
   useEffect(() => {
     return () => {
       if (stopTimer.current) window.clearTimeout(stopTimer.current);
-      onDraft?.('');
     };
-    // Only clear remote draft when this composer unmounts.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const emitTyping = (next: boolean) => {
@@ -99,7 +97,7 @@ export function InlineNoteEditor({
     if (next.trim()) {
       emitTyping(true);
       if (stopTimer.current) window.clearTimeout(stopTimer.current);
-      stopTimer.current = window.setTimeout(() => emitTyping(false), 1400);
+      stopTimer.current = window.setTimeout(() => emitTyping(false), 1800);
     } else {
       emitTyping(false);
     }
@@ -107,12 +105,16 @@ export function InlineNoteEditor({
 
   const submit = () => {
     const trimmed = value.trim();
-    if (!trimmed || disabled) return;
-    onDraft?.('');
+    if (!trimmed || disabled || uploading || sendingRef.current) return;
+    sendingRef.current = true;
+    // Keep peer draft until RECEIVE_MESSAGE — only stop local typing flags.
     onSend(trimmed);
     setValue('');
     emitTyping(false);
-    requestAnimationFrame(() => textareaRef.current?.focus());
+    requestAnimationFrame(() => {
+      sendingRef.current = false;
+      textareaRef.current?.focus();
+    });
   };
 
   const pickFile = () => {
@@ -145,7 +147,6 @@ export function InlineNoteEditor({
     setUploading(true);
     setAttachHint(null);
     try {
-      onDraft?.('');
       const ok = await onAttach(file);
       if (ok === false) setAttachHint('Couldn’t add that file. Try another.');
     } catch {
@@ -172,11 +173,18 @@ export function InlineNoteEditor({
       onArrowUpEmpty();
       return;
     }
+    // Desktop: Enter sends. Mobile: prefer the Send button (return often fights the soft keyboard).
     if (e.key === 'Enter' && !e.shiftKey) {
+      if (touchFriendly) {
+        // Soft keyboards often insert a newline — keep that on mobile and use Send.
+        return;
+      }
       e.preventDefault();
       submit();
     }
   };
+
+  const canSend = Boolean(value.trim()) && !disabled && !uploading;
 
   return (
     <form
@@ -186,7 +194,7 @@ export function InlineNoteEditor({
         submit();
       }}
     >
-      <div className="flex items-start gap-1.5">
+      <div className="flex items-end gap-1.5">
         {onAttach && (
           <>
             <input
@@ -202,7 +210,7 @@ export function InlineNoteEditor({
               onClick={pickFile}
               aria-label="Add photo or PDF"
               title="Add photo or PDF"
-              className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] text-[var(--me)] transition-opacity hover:bg-[color-mix(in_srgb,var(--me)_10%,transparent)] disabled:opacity-40"
+              className="mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] text-[var(--me)] transition-opacity hover:bg-[color-mix(in_srgb,var(--me)_10%,transparent)] disabled:opacity-40"
             >
               <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
                 <path d="M14.5 3.5a3.2 3.2 0 0 1 0 4.5l-5.3 5.3a2.1 2.1 0 1 1-3-3l4.8-4.8.9.9-4.8 4.8a.9.9 0 1 0 1.2 1.2l5.3-5.3a1.9 1.9 0 1 0-2.7-2.7L5.6 10.7a3.2 3.2 0 1 0 4.5 4.5l5.6-5.6.9.9-5.6 5.6a4.5 4.5 0 1 1-6.3-6.3l5.3-5.3a3.2 3.2 0 0 1 4.5 0z" />
@@ -221,9 +229,15 @@ export function InlineNoteEditor({
           autoCapitalize="sentences"
           autoCorrect="on"
           autoComplete="off"
-          enterKeyHint="enter"
+          enterKeyHint="send"
           placeholder={
-            disabled ? 'Offline…' : uploading ? 'Uploading…' : 'Start writing…'
+            disabled
+              ? 'Offline…'
+              : uploading
+                ? 'Uploading…'
+                : touchFriendly
+                  ? 'Write a line…'
+                  : 'Start writing…'
           }
           aria-label="Write in the note"
           className="note-line block min-w-0 flex-1 resize-none overflow-hidden bg-transparent text-left text-[var(--text)] outline-none placeholder:text-left placeholder:text-[var(--text-faint)] disabled:opacity-50"
@@ -234,6 +248,18 @@ export function InlineNoteEditor({
             minHeight: LINE,
           }}
         />
+        <button
+          type="submit"
+          disabled={!canSend}
+          aria-label="Send line"
+          className={`mb-0.5 flex h-9 shrink-0 items-center justify-center rounded-[10px] px-3 text-[14px] font-semibold transition-[opacity,background-color,transform] active:scale-[0.98] disabled:opacity-35 ${
+            touchFriendly
+              ? 'min-w-[64px] bg-[var(--accent)] text-[var(--accent-ink)]'
+              : 'min-w-[52px] text-[var(--me)] hover:bg-[color-mix(in_srgb,var(--me)_10%,transparent)]'
+          }`}
+        >
+          Send
+        </button>
       </div>
       {attachHint && (
         <p className="mt-1 pl-9 text-[12px] text-[var(--warning)]">{attachHint}</p>

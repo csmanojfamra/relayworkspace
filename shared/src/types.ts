@@ -34,6 +34,8 @@ export interface ChatMessage {
   deleteAt: number | null;
   /** Optional photo or document shared in the note */
   attachment?: NoteAttachment | null;
+  /** Client-generated id for optimistic send / retry dedupe */
+  clientId?: string | null;
 }
 
 export type AttachmentKind = 'image' | 'document';

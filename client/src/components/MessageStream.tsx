@@ -107,8 +107,13 @@ export function MessageStream({
 
   const composerPeerDraft =
     peerDraft && !peerDraft.messageId ? peerDraft.content : null;
-  const showPeerComposer =
-    Boolean(composerPeerDraft) || (peerTyping && !peerDraft?.messageId);
+  // Keep ghost draft visible after they pause — only fall off when a real line lands.
+  const lastPeerLine = [...messages].reverse().find((m) => m.senderRole !== role);
+  const draftAlreadyCommitted =
+    Boolean(composerPeerDraft) &&
+    Boolean(lastPeerLine) &&
+    lastPeerLine!.content === composerPeerDraft;
+  const showPeerComposer = Boolean(composerPeerDraft) && !draftAlreadyCommitted;
 
   const onScroll = () => {
     const root = scrollRef.current;
