@@ -15,6 +15,7 @@ export function Workspace() {
     phase,
     messages,
     peerTyping,
+    peerDraft,
     peerConnected,
     connected,
     latency,
@@ -23,6 +24,7 @@ export function Workspace() {
     editMessage,
     deleteMessage,
     setTyping,
+    sendDraft,
     markSeen,
   } = useSession();
   const isMobile = useIsMobile();
@@ -63,6 +65,7 @@ export function Workspace() {
                 messages={messages}
                 role={role}
                 peerTyping={peerTyping}
+                peerDraft={peerDraft}
                 peerConnected={peerConnected}
                 connected={connected}
                 latency={latency}
@@ -72,6 +75,7 @@ export function Workspace() {
                 onDeleteMessage={deleteMessage}
                 onAttach={sendAttachment}
                 onTyping={setTyping}
+                onDraft={sendDraft}
                 inputDisabled={!connected}
               />
             )}

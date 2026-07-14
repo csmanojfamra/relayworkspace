@@ -99,6 +99,14 @@ export interface TypingPayload {
   role: UserRole;
 }
 
+/** Live in-progress text — composer when messageId is null, else a line being edited. */
+export interface DraftUpdatePayload {
+  roomId: string;
+  role: UserRole;
+  content: string;
+  messageId: string | null;
+}
+
 export interface SeenPayload {
   roomId: string;
   messageIds: string[];

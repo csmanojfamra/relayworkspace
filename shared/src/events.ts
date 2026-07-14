@@ -14,6 +14,7 @@ export const SocketEvents = {
   MESSAGES_CLEARED: 'messages-cleared',
   TYPING_START: 'typing-start',
   TYPING_STOP: 'typing-stop',
+  DRAFT_UPDATE: 'draft-update',
   SEEN: 'seen',
   HEARTBEAT: 'heartbeat',
   DISCONNECT: 'disconnect',

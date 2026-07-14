@@ -12,6 +12,7 @@ interface InlineNoteEditorProps {
   onSend: (value: string) => void;
   onAttach?: (file: File) => void | Promise<boolean | void>;
   onTyping: (typing: boolean) => void;
+  onDraft?: (content: string) => void;
   disabled?: boolean;
   autoFocus?: boolean;
   /** When caret is at the start of an empty editor, ArrowUp focuses the last line. */
@@ -31,6 +32,7 @@ export function InlineNoteEditor({
   onSend,
   onAttach,
   onTyping,
+  onDraft,
   disabled,
   autoFocus = true,
   onArrowUpEmpty,
@@ -57,6 +59,7 @@ export function InlineNoteEditor({
   useEffect(() => {
     if (!seedToken) return;
     setValue(seedText);
+    onDraft?.(seedText);
     requestAnimationFrame(() => {
       const el = textareaRef.current;
       if (!el) return;
@@ -64,7 +67,7 @@ export function InlineNoteEditor({
       const len = seedText.length;
       el.setSelectionRange(len, len);
     });
-  }, [seedToken, seedText]);
+  }, [seedToken, seedText, onDraft]);
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -75,6 +78,15 @@ export function InlineNoteEditor({
     el.style.height = `${Math.ceil(next / LINE) * LINE}px`;
   }, [value]);
 
+  useEffect(() => {
+    return () => {
+      if (stopTimer.current) window.clearTimeout(stopTimer.current);
+      onDraft?.('');
+    };
+    // Only clear remote draft when this composer unmounts.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const emitTyping = (next: boolean) => {
     if (typingRef.current === next) return;
     typingRef.current = next;
@@ -83,6 +95,7 @@ export function InlineNoteEditor({
 
   const handleChange = (next: string) => {
     setValue(next);
+    onDraft?.(next);
     if (next.trim()) {
       emitTyping(true);
       if (stopTimer.current) window.clearTimeout(stopTimer.current);
@@ -95,6 +108,7 @@ export function InlineNoteEditor({
   const submit = () => {
     const trimmed = value.trim();
     if (!trimmed || disabled) return;
+    onDraft?.('');
     onSend(trimmed);
     setValue('');
     emitTyping(false);
@@ -131,6 +145,7 @@ export function InlineNoteEditor({
     setUploading(true);
     setAttachHint(null);
     try {
+      onDraft?.('');
       const ok = await onAttach(file);
       if (ok === false) setAttachHint('Couldn’t add that file. Try another.');
     } catch {

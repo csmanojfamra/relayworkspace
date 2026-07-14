@@ -13,6 +13,7 @@ import {
   SocketEvents,
   type ChatMessage,
   type CreateRoomResult,
+  type DraftUpdatePayload,
   type ErrorPayload,
   type JoinRequestPayload,
   type JoinResult,
@@ -21,6 +22,11 @@ import {
   type UserRole,
 } from '@terminalchat/shared';
 import { getSocketUrl, isSocketUrlConfigured } from '@/lib/utils';
+
+export interface PeerDraft {
+  content: string;
+  messageId: string | null;
+}
 
 type SessionPhase =
   | 'landing'
@@ -41,6 +47,7 @@ interface SessionContextValue {
   roomState: RoomPublicState | null;
   peerConnected: boolean;
   peerTyping: boolean;
+  peerDraft: PeerDraft | null;
   latency: number | null;
   joinRequest: JoinRequestPayload | null;
   error: ErrorPayload | null;
@@ -60,6 +67,7 @@ interface SessionContextValue {
   deleteMessage: (messageId: string) => void;
   clearMessages: (onResult?: (ok: boolean) => void) => void;
   setTyping: (typing: boolean) => void;
+  sendDraft: (content: string, messageId?: string | null) => void;
   markSeen: (ids: string[]) => void;
   reset: () => void;
   setBootComplete: () => void;
@@ -112,6 +120,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [roomState, setRoomState] = useState<RoomPublicState | null>(null);
   const [peerConnected, setPeerConnected] = useState(false);
   const [peerTyping, setPeerTyping] = useState(false);
+  const [peerDraft, setPeerDraft] = useState<PeerDraft | null>(null);
+  const draftEmitTimer = useRef<number | null>(null);
+  const lastDraftSent = useRef<{ content: string; messageId: string | null }>({
+    content: '',
+    messageId: null,
+  });
+  const pendingDraft = useRef<{ content: string; messageId: string | null }>({
+    content: '',
+    messageId: null,
+  });
   const [latency, setLatency] = useState<number | null>(null);
   const [joinRequest, setJoinRequest] = useState<JoinRequestPayload | null>(null);
   const [error, setError] = useState<ErrorPayload | null>(null);
@@ -309,27 +327,57 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         if (prev.some((m) => m.id === message.id)) return prev;
         return [...prev, message];
       });
+      // Committed line replaces live composer draft from that peer.
+      setPeerDraft((prev) => {
+        if (!prev || prev.messageId) return prev;
+        return null;
+      });
+      setPeerTyping(false);
     });
 
     socket.on(SocketEvents.MESSAGE_UPDATED, (message: ChatMessage) => {
       setMessages((prev) => prev.map((m) => (m.id === message.id ? message : m)));
+      setPeerDraft((prev) => {
+        if (prev?.messageId === message.id) return null;
+        return prev;
+      });
     });
 
     socket.on(SocketEvents.MESSAGE_DELETED, (payload: { messageId: string }) => {
       setMessages((prev) => prev.filter((m) => m.id !== payload.messageId));
+      setPeerDraft((prev) => {
+        if (prev?.messageId === payload.messageId) return null;
+        return prev;
+      });
     });
 
     socket.on(SocketEvents.MESSAGES_CLEARED, () => {
       setMessages([]);
       setPeerTyping(false);
+      setPeerDraft(null);
     });
 
     socket.on(SocketEvents.TYPING_START, () => setPeerTyping(true));
     socket.on(SocketEvents.TYPING_STOP, () => setPeerTyping(false));
 
+    socket.on(SocketEvents.DRAFT_UPDATE, (payload: DraftUpdatePayload) => {
+      setPeerTyping(Boolean(payload.content));
+      if (!payload.content) {
+        setPeerDraft(null);
+        return;
+      }
+      setPeerDraft({
+        content: payload.content,
+        messageId: payload.messageId ?? null,
+      });
+    });
+
     socket.on(SocketEvents.PEER_STATUS, (payload: PeerStatusPayload) => {
       setPeerConnected(payload.connected);
-      if (!payload.connected) setPeerTyping(false);
+      if (!payload.connected) {
+        setPeerTyping(false);
+        setPeerDraft(null);
+      }
     });
 
     socket.on(SocketEvents.LATENCY, (payload: { latency: number }) => {
@@ -676,6 +724,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           }
           setMessages([]);
           setPeerTyping(false);
+          setPeerDraft(null);
           onResult?.(Boolean(result.ok));
         }
       );
@@ -695,6 +744,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      lastDraftSent.current = { content: '', messageId: null };
+      socket.emit(SocketEvents.DRAFT_UPDATE, { content: '', messageId: null });
       socket.emit(SocketEvents.SEND_MESSAGE, { content: trimmed });
       socket.emit(SocketEvents.TYPING_STOP);
     },
@@ -765,6 +816,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
 
       socket.emit(SocketEvents.EDIT_MESSAGE, { messageId, content: trimmed });
+      lastDraftSent.current = { content: '', messageId: null };
+      socket.emit(SocketEvents.DRAFT_UPDATE, { content: '', messageId: null });
       socket.emit(SocketEvents.TYPING_STOP);
     },
     [ensureSocket]
@@ -779,6 +832,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         content: '',
         remove: true,
       });
+      lastDraftSent.current = { content: '', messageId: null };
+      socket.emit(SocketEvents.DRAFT_UPDATE, { content: '', messageId: null });
       socket.emit(SocketEvents.TYPING_STOP);
     },
     [ensureSocket]
@@ -788,6 +843,55 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     (typing: boolean) => {
       const socket = ensureSocket();
       socket.emit(typing ? SocketEvents.TYPING_START : SocketEvents.TYPING_STOP);
+    },
+    [ensureSocket]
+  );
+
+  const sendDraft = useCallback(
+    (content: string, messageId: string | null = null) => {
+      const socket = ensureSocket();
+      pendingDraft.current = {
+        content: content.slice(0, 4000),
+        messageId: messageId ?? null,
+      };
+
+      const flush = () => {
+        draftEmitTimer.current = null;
+        const next = pendingDraft.current;
+        if (
+          lastDraftSent.current.content === next.content &&
+          lastDraftSent.current.messageId === next.messageId
+        ) {
+          return;
+        }
+        lastDraftSent.current = next;
+        socket.emit(SocketEvents.DRAFT_UPDATE, next);
+        if (next.content) {
+          socket.emit(SocketEvents.TYPING_START);
+        } else {
+          socket.emit(SocketEvents.TYPING_STOP);
+        }
+        // Catch keystrokes that landed while this flush was queued.
+        if (
+          pendingDraft.current.content !== next.content ||
+          pendingDraft.current.messageId !== next.messageId
+        ) {
+          draftEmitTimer.current = window.setTimeout(flush, 40);
+        }
+      };
+
+      // Empty clears immediately so the peer doesn't keep stale text.
+      if (!pendingDraft.current.content) {
+        if (draftEmitTimer.current) {
+          window.clearTimeout(draftEmitTimer.current);
+          draftEmitTimer.current = null;
+        }
+        flush();
+        return;
+      }
+
+      if (draftEmitTimer.current) return;
+      draftEmitTimer.current = window.setTimeout(flush, 40);
     },
     [ensureSocket]
   );
@@ -811,6 +915,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setRoomState(null);
     setPeerConnected(false);
     setPeerTyping(false);
+    setPeerDraft(null);
     setJoinRequest(null);
     setError(null);
     setSessionStartedAt(null);
@@ -872,6 +977,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       roomState,
       peerConnected,
       peerTyping,
+      peerDraft,
       latency,
       joinRequest,
       error,
@@ -891,6 +997,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       deleteMessage,
       clearMessages,
       setTyping,
+      sendDraft,
       markSeen,
       reset,
       setBootComplete,
@@ -907,6 +1014,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       roomState,
       peerConnected,
       peerTyping,
+      peerDraft,
       latency,
       joinRequest,
       error,
@@ -926,6 +1034,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       deleteMessage,
       clearMessages,
       setTyping,
+      sendDraft,
       markSeen,
       reset,
       setBootComplete,

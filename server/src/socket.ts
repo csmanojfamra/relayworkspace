@@ -4,6 +4,7 @@ import {
   MAX_ATTACHMENT_BYTES,
   type ChatMessage,
   type CreateRoomResult,
+  type DraftUpdatePayload,
   type ErrorPayload,
   type HeartbeatPayload,
   type JoinRequestPayload,
@@ -699,6 +700,30 @@ export function registerSocketHandlers(io: Server): void {
 
       const payload: TypingPayload = { roomId: room.roomId, role: binding.role };
       io.to(peerId).emit(SocketEvents.TYPING_STOP, payload);
+    });
+
+    socket.on(SocketEvents.DRAFT_UPDATE, (payload: { content?: string; messageId?: string | null }) => {
+      const binding = roomStore.getSocketBinding(socket.id);
+      if (!binding) return;
+      const room = roomStore.getRoom(binding.roomId);
+      if (!room) return;
+
+      const peerId = roomStore.getPeerSocketId(room, binding.role);
+      if (!peerId) return;
+
+      const content = typeof payload?.content === 'string' ? payload.content.slice(0, 4000) : '';
+      const messageId =
+        typeof payload?.messageId === 'string' && payload.messageId.trim()
+          ? payload.messageId.trim()
+          : null;
+
+      const draft: DraftUpdatePayload = {
+        roomId: room.roomId,
+        role: binding.role,
+        content,
+        messageId,
+      };
+      io.to(peerId).emit(SocketEvents.DRAFT_UPDATE, draft);
     });
 
     socket.on(SocketEvents.SEEN, (payload: SeenPayload) => {

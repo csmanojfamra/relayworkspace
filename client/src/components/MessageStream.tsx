@@ -9,13 +9,14 @@ import {
 import type { ChatMessage, UserRole } from '@terminalchat/shared';
 import { InlineNoteEditor } from '@/components/CommandInput';
 import { NoteAttachmentPreview } from '@/components/NoteAttachmentPreview';
-import { useSession } from '@/hooks/useSession';
+import { useSession, type PeerDraft } from '@/hooks/useSession';
 import { resolveAttachmentUrl } from '@/lib/utils';
 
 interface MessageStreamProps {
   messages: ChatMessage[];
   role: UserRole | null;
   peerTyping: boolean;
+  peerDraft: PeerDraft | null;
   peerConnected: boolean;
   connected: boolean;
   latency: number | null;
@@ -25,6 +26,7 @@ interface MessageStreamProps {
   onDeleteMessage: (messageId: string) => void;
   onAttach?: (file: File) => Promise<boolean>;
   onTyping: (typing: boolean) => void;
+  onDraft: (content: string, messageId?: string | null) => void;
   inputDisabled?: boolean;
 }
 
@@ -61,6 +63,7 @@ export function MessageStream({
   messages,
   role,
   peerTyping,
+  peerDraft,
   peerConnected: _peerConnected,
   connected: _connected,
   latency: _latency,
@@ -70,13 +73,12 @@ export function MessageStream({
   onDeleteMessage,
   onAttach,
   onTyping,
+  onDraft,
   inputDisabled,
 }: MessageStreamProps) {
   const { sessionStartedAt } = useSession();
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
-  const stageTimers = useRef(new Map<string, number>());
-  const [revealedIds, setRevealedIds] = useState(() => new Set<string>());
   const composerSeedRef = useRef<{ token: number; text: string }>({ token: 0, text: '' });
   const [composerSeed, setComposerSeed] = useState(0);
 
@@ -93,65 +95,20 @@ export function MessageStream({
     }).format(new Date(ts));
   }, [messages, sessionStartedAt]);
 
-  useEffect(() => {
-    if (messages.length === 0) {
-      setRevealedIds(new Set());
-      for (const timer of stageTimers.current.values()) window.clearTimeout(timer);
-      stageTimers.current.clear();
-    }
-  }, [messages.length]);
-
-  useEffect(() => {
-    for (const message of messages) {
-      const mine = message.senderRole === role;
-      if (mine) {
-        if (!revealedIds.has(message.id)) {
-          setRevealedIds((prev) => {
-            if (prev.has(message.id)) return prev;
-            const next = new Set(prev);
-            next.add(message.id);
-            return next;
-          });
-        }
-        continue;
-      }
-      if (revealedIds.has(message.id) || stageTimers.current.has(message.id)) continue;
-      const delay = 180 + Math.floor(Math.random() * 160);
-      const timer = window.setTimeout(() => {
-        stageTimers.current.delete(message.id);
-        setRevealedIds((prev) => {
-          if (prev.has(message.id)) return prev;
-          const next = new Set(prev);
-          next.add(message.id);
-          return next;
-        });
-      }, delay);
-      stageTimers.current.set(message.id, timer);
-    }
-  }, [messages, role, revealedIds]);
-
-  useEffect(() => {
-    return () => {
-      for (const timer of stageTimers.current.values()) window.clearTimeout(timer);
-      stageTimers.current.clear();
-    };
-  }, []);
-
   const paragraphs = useMemo(
     () =>
-      messages.map((message) => {
-        const mine = message.senderRole === role;
-        return {
-          key: message.id,
-          message,
-          mine,
-          staged: !mine && !revealedIds.has(message.id),
-        };
-      }),
-    [messages, role, revealedIds]
+      messages.map((message) => ({
+        key: message.id,
+        message,
+        mine: message.senderRole === role,
+      })),
+    [messages, role]
   );
 
-  const stagingRemote = paragraphs.some((p) => p.staged);
+  const composerPeerDraft =
+    peerDraft && !peerDraft.messageId ? peerDraft.content : null;
+  const showPeerComposer =
+    Boolean(composerPeerDraft) || (peerTyping && !peerDraft?.messageId);
 
   const onScroll = () => {
     const root = scrollRef.current;
@@ -164,20 +121,19 @@ export function MessageStream({
     const root = scrollRef.current;
     if (!root || !stickToBottom.current) return;
     root.scrollTop = root.scrollHeight;
-  }, [paragraphs.length, stagingRemote, revealedIds.size, peerTyping]);
+  }, [paragraphs.length, composerPeerDraft, peerTyping, messages]);
 
   useEffect(() => {
     if (!role || !onVisible) return;
     const pending = messages
       .filter((m) => {
-        if (m.senderRole !== role && !revealedIds.has(m.id)) return false;
         if (role === 'host') return !m.seenByHost;
         if (role === 'guest') return !m.seenByGuest;
         return false;
       })
       .map((m) => m.id);
     if (pending.length) onVisible(pending);
-  }, [messages, role, onVisible, revealedIds]);
+  }, [messages, role, onVisible]);
 
   const pullLastLineIntoComposer = () => {
     const last = messages[messages.length - 1];
@@ -202,7 +158,11 @@ export function MessageStream({
         onScroll={onScroll}
         className="scroll-y terminal-scroll min-h-0 flex-1 bg-[var(--note)]"
         onClick={(e) => {
-          if ((e.target as HTMLElement).closest('textarea, a, button, input, [data-note-line], iframe')) {
+          if (
+            (e.target as HTMLElement).closest(
+              'textarea, a, button, input, [data-note-line], iframe'
+            )
+          ) {
             return;
           }
           focusComposer();
@@ -221,27 +181,18 @@ export function MessageStream({
           <div className="note-ruled mt-4 min-h-[55vh] w-full flex-1 text-left">
             <AnimatePresence initial={false}>
               {paragraphs.map((item, index) => {
-                if (item.staged) {
-                  return (
-                    <motion.p
-                      key={`prep-${item.key}`}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 0.4 }}
-                      className="note-line italic text-[var(--text-faint)]"
-                    >
-                      …
-                    </motion.p>
-                  );
-                }
                 const prevId = index > 0 ? paragraphs[index - 1]?.key : null;
                 const nextId =
                   index < paragraphs.length - 1 ? paragraphs[index + 1]?.key : null;
+                const livePeerEdit =
+                  peerDraft?.messageId === item.key ? peerDraft.content : null;
                 return (
                   <NoteParagraph
                     key={item.key}
                     message={item.message}
                     mine={item.mine}
                     disabled={inputDisabled}
+                    livePeerContent={livePeerEdit}
                     onSave={(content) => onEdit(item.key, content)}
                     onDelete={() => {
                       onDeleteMessage(item.key);
@@ -260,13 +211,17 @@ export function MessageStream({
                       else focusComposer();
                     }}
                     onTyping={onTyping}
+                    onDraft={(content) => onDraft(content, item.key)}
                   />
                 );
               })}
             </AnimatePresence>
 
-            {peerTyping && !stagingRemote && (
-              <p className="note-line italic text-[var(--text-faint)]">Writing…</p>
+            {showPeerComposer && (
+              <p className="note-line peer-live-draft whitespace-pre-wrap break-words text-[var(--text)]">
+                {composerPeerDraft || ''}
+                <span className="peer-live-caret" aria-hidden />
+              </p>
             )}
 
             <InlineNoteEditor
@@ -285,6 +240,7 @@ export function MessageStream({
                   : undefined
               }
               onTyping={onTyping}
+              onDraft={(content) => onDraft(content, null)}
               disabled={inputDisabled}
               onArrowUpEmpty={() => {
                 const last = messages[messages.length - 1];
@@ -303,22 +259,26 @@ function NoteParagraph({
   message,
   mine,
   disabled,
+  livePeerContent,
   onSave,
   onDelete,
   onEnter,
   onArrowUp,
   onArrowDown,
   onTyping,
+  onDraft,
 }: {
   message: ChatMessage;
   mine: boolean;
   disabled?: boolean;
+  livePeerContent: string | null;
   onSave: (content: string) => void;
   onDelete: () => void;
   onEnter: () => void;
   onArrowUp: () => void;
   onArrowDown: () => void;
   onTyping: (typing: boolean) => void;
+  onDraft: (content: string) => void;
 }) {
   const [draft, setDraft] = useState(message.content);
   const draftRef = useRef(message.content);
@@ -328,12 +288,12 @@ function NoteParagraph({
   const stopTimer = useRef<number | null>(null);
   const saveTimer = useRef<number | null>(null);
 
-  // Sync remote/peer updates while this line is not being edited.
   useEffect(() => {
     if (focusedRef.current) return;
-    setDraft(message.content);
-    draftRef.current = message.content;
-  }, [message.content]);
+    const next = livePeerContent !== null ? livePeerContent : message.content;
+    setDraft(next);
+    draftRef.current = next;
+  }, [message.content, livePeerContent]);
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -363,7 +323,6 @@ function NoteParagraph({
     }
     const trimmed = content.trim();
     if (!trimmed) {
-      // Keep attachment blocks when caption is empty; only plain lines delete.
       if (allowDelete && !message.attachment) onDelete();
       else if (!message.attachment) return;
       else if (message.content.trim()) onSave('');
@@ -374,7 +333,6 @@ function NoteParagraph({
   };
 
   const scheduleSave = (content: string) => {
-    // Never auto-delete while typing — empty only removes on Backspace/blur.
     if (!content.trim()) {
       if (saveTimer.current) {
         window.clearTimeout(saveTimer.current);
@@ -394,7 +352,7 @@ function NoteParagraph({
 
     if (e.key === 'Backspace' && atStart && !el.value) {
       e.preventDefault();
-      // Empty caption + Backspace removes the whole block (text or attachment).
+      onDraft('');
       onDelete();
       return;
     }
@@ -402,6 +360,7 @@ function NoteParagraph({
     if (e.key === 'ArrowUp' && atStart) {
       e.preventDefault();
       flushSave(draftRef.current, { allowDelete: !message.attachment });
+      onDraft('');
       onArrowUp();
       return;
     }
@@ -409,6 +368,7 @@ function NoteParagraph({
     if (e.key === 'ArrowDown' && atEnd) {
       e.preventDefault();
       flushSave(draftRef.current, { allowDelete: !message.attachment });
+      onDraft('');
       onArrowDown();
       return;
     }
@@ -416,6 +376,7 @@ function NoteParagraph({
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       flushSave(draftRef.current, { allowDelete: !message.attachment });
+      onDraft('');
       onEnter();
     }
   };
@@ -429,7 +390,7 @@ function NoteParagraph({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0, height: 0, overflow: 'hidden' }}
-      transition={{ duration: 0.18 }}
+      transition={{ duration: 0.12 }}
       data-note-line
       className="note-paragraph-edit"
     >
@@ -454,6 +415,7 @@ function NoteParagraph({
           const next = e.target.value;
           setDraft(next);
           draftRef.current = next;
+          onDraft(next);
           if (next.trim()) {
             emitTyping(true);
             if (stopTimer.current) window.clearTimeout(stopTimer.current);
@@ -468,6 +430,7 @@ function NoteParagraph({
         onBlur={() => {
           focusedRef.current = false;
           emitTyping(false);
+          onDraft('');
           flushSave(draftRef.current, { allowDelete: !message.attachment });
         }}
         rows={1}
@@ -484,4 +447,3 @@ function NoteParagraph({
     </motion.div>
   );
 }
-
